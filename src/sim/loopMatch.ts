@@ -16,18 +16,10 @@ import type { BuiltScene } from '../scene/build';
 import { KIND_DYNAMIC } from '../scene/build';
 import type { SceneDoc } from '../scene/doc';
 import type { BakeResult } from './baker';
-import { packQuat } from '../render/bodies';
+import { packQuat, unpackQuat } from './poseCodec';
+import { gpuBufferOf } from '../render/threeInternals';
 
 type Q = [number, number, number, number];
-
-function decodeQuat(p: number): Q {
-  const idx = p >>> 30;
-  const c = [(p & 1023) / 1023 - 0.5, ((p >>> 10) & 1023) / 1023 - 0.5, ((p >>> 20) & 1023) / 1023 - 0.5].map((x) => x * 1.41421356);
-  const w = Math.sqrt(Math.max(0, 1 - c[0] * c[0] - c[1] * c[1] - c[2] * c[2]));
-  const q: number[] = [...c];
-  q.splice(idx, 0, w);
-  return q as Q;
-}
 
 function qmul(a: Q, b: Q): Q {
   return [
@@ -66,7 +58,7 @@ function packColor(c: number[]): number {
 
 /** Copies a few recorded frames of the history back to the CPU. */
 export async function readFrames(device: GPUDevice, renderer: any, res: BakeResult, slots: number[]): Promise<Uint32Array[]> {
-  const src = renderer.backend.get(res.history)?.buffer as GPUBuffer | undefined;
+  const src = gpuBufferOf(renderer, res.history);
   if (!src) throw new Error('history buffer not on the GPU');
   const bytes = res.stride * 16;
   const staging = device.createBuffer({ size: bytes * slots.length, usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ });
@@ -213,7 +205,7 @@ export async function matchLoop(device: GPUDevice, renderer: any, res: BakeResul
     for (const i of members) {
       const j = twin.get(i)!;
       const b = built.bodies[i - 1];
-      const qi = decodeQuat(pEnd[i * 4 + 3]), qj = decodeQuat(wEnd[j * 4 + 3]);
+      const qi = unpackQuat(pEnd[i * 4 + 3], [0, 0, 0, 0]) as Q, qj = unpackQuat(wEnd[j * 4 + 3], [0, 0, 0, 0]) as Q;
       let g: Q;
       if (b.shape === 1) g = qmul(conj(qj), qi); // a sphere may keep its own spin
       else {

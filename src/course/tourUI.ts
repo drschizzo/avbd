@@ -4,13 +4,7 @@
 import { drawDiagram, type DiagEnv } from './diagrams';
 import { DH, DW } from './draw';
 import { LAYERS, type Control, type Stop, type Tour, type Vals } from './tour';
-
-export const h = <K extends keyof HTMLElementTagNameMap>(tag: K, cls?: string, html?: string): HTMLElementTagNameMap[K] => {
-  const el = document.createElement(tag);
-  if (cls) el.className = cls;
-  if (html != null) el.innerHTML = html;
-  return el;
-};
+import { el as h } from '../util/dom';
 
 const fmtClock = (s: number) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
 

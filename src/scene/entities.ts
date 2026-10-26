@@ -7,8 +7,9 @@ import type { BodyKind, Entity, EntityType, Finish, Look, MotionDef, Phys, Vec3 
 import { defaultLook, defaultMotion, defaultPhys } from './doc';
 import type { Rng } from './rng';
 import { GADGET_DEFS, hinge, latch } from './gadgets';
+import { DEG, half, qAxis, qMul, v3, type Q4 } from './geom';
 
-export type Q4 = [number, number, number, number];
+export type { Q4 } from './geom';
 
 export interface ParamSpec {
   key: string;
@@ -92,25 +93,40 @@ export interface EntityDef {
   movable: boolean;
   build(ctx: BuildCtx, p: Record<string, any>): void;
   ports?(p: Record<string, any>): Port[];
+  /** height of a new one's origin (default 0: base on the floor) */
+  originY?: number;
+  /**
+   * Hanging and flying things keep their height when added from the palette
+   * (at `y`, or their origin height) instead of following the cursor until a
+   * click drops them.
+   */
+  hang?: { y?: number };
+  /** what the editor draws for a part with no visible body at rest */
+  marker?(p: Record<string, any>): EditorMarker;
+  /** spawns bodies during the clip: built after every other part, so they follow the initial bodies */
+  spawnsLate?: boolean;
+  /** machine check: a row whose every piece must go */
+  chain?(p: Record<string, any>): boolean;
+  /** liquid particles (src/fluid), not rigid bodies */
+  liquid?: 'block' | 'source';
+  /**
+   * After the user changed param `key`: adjust the rest of the entity (a new
+   * path fill brings its own sizes and look). True when it changed anything.
+   */
+  onParamChange?(e: Entity, key: string): boolean;
 }
 
-const v3 = (x: number, y: number, z: number): Vec3 => [x, y, z];
-const qAxis = (ax: Vec3, angle: number): Q4 => {
-  const q = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(...ax).normalize(), angle);
-  return [q.x, q.y, q.z, q.w];
-};
-const qMul = (a: Q4, b: Q4): Q4 => {
-  const q = new THREE.Quaternion(...a).multiply(new THREE.Quaternion(...b));
-  return [q.x, q.y, q.z, q.w];
-};
-const half = (s: Vec3): Vec3 => [s[0] / 2, s[1] / 2, s[2] / 2];
-const DEG = Math.PI / 180;
+export type EditorMarker =
+  | { kind: 'cone'; radius: number; height: number } // a downward opening at the origin, entity-oriented
+  | { kind: 'box'; size: Vec3 } // a zone, entity-oriented
+  | { kind: 'point' }; // a pivot / anchor
+
 
 // ---------------------------------------------------------------------------
 
 export const ENTITY_DEFS: Record<EntityType, EntityDef> = {
   box: {
-    label: 'Box', category: 'Primitives', icon: '▣', movable: true,
+    label: 'Box', category: 'Primitives', icon: '▣', movable: true, originY: 0.5,
     params: [{ key: 'size', label: 'Size', kind: 'vec3', min: 0.02, max: 40, step: 0.01 }],
     defaults: { size: [1, 1, 1] },
     build(ctx, p) {
@@ -119,7 +135,7 @@ export const ENTITY_DEFS: Record<EntityType, EntityDef> = {
   },
 
   sphere: {
-    label: 'Sphere', category: 'Primitives', icon: '●', movable: true,
+    label: 'Sphere', category: 'Primitives', icon: '●', movable: true, originY: 0.5,
     params: [{ key: 'radius', label: 'Radius', kind: 'number', min: 0.02, max: 20, step: 0.01 }],
     defaults: { radius: 0.5 },
     build(ctx, p) {
@@ -238,7 +254,7 @@ export const ENTITY_DEFS: Record<EntityType, EntityDef> = {
   },
 
   dominoes: {
-    label: 'Dominoes', category: 'Structures', icon: '⫼', movable: false,
+    label: 'Dominoes', category: 'Structures', icon: '⫼', movable: false, chain: () => true,
     params: [
       { key: 'count', label: 'Count', kind: 'int', min: 2, max: 3000 },
       { key: 'size', label: 'Domino (t,h,w)', kind: 'vec3', min: 0.01, max: 5, step: 0.01 },
@@ -311,6 +327,7 @@ export const ENTITY_DEFS: Record<EntityType, EntityDef> = {
 
   chain: {
     label: 'Chain / bridge', category: 'Mechanisms', icon: '⛓', movable: false,
+    hang: { y: 4 }, marker: () => ({ kind: 'point' }),
     params: [
       { key: 'links', label: 'Links', kind: 'int', min: 2, max: 400 },
       { key: 'linkType', label: 'Link', kind: 'select', options: ['bead', 'plank'] },
@@ -404,6 +421,7 @@ export const ENTITY_DEFS: Record<EntityType, EntityDef> = {
 
   wreckingBall: {
     label: 'Wrecking ball', category: 'Mechanisms', icon: '◉', movable: false,
+    hang: { y: 6 }, marker: () => ({ kind: 'point' }),
     params: [
       { key: 'length', label: 'Cable length', kind: 'number', min: 0.3, max: 30, step: 0.01 },
       { key: 'links', label: 'Cable segments', kind: 'int', min: 1, max: 40 },
@@ -753,7 +771,7 @@ export const ENTITY_DEFS: Record<EntityType, EntityDef> = {
   },
 
   fluidBlock: {
-    label: 'Water block', category: 'Liquids', icon: '▤', movable: false,
+    label: 'Water block', category: 'Liquids', icon: '▤', movable: false, liquid: 'block',
     params: [
       { key: 'size', label: 'Size', kind: 'vec3', min: 0.05, max: 20, step: 0.01, help: 'Box of liquid; the position is its base centre' },
     ],
@@ -762,7 +780,7 @@ export const ENTITY_DEFS: Record<EntityType, EntityDef> = {
   },
 
   fluidSource: {
-    label: 'Water source', category: 'Liquids', icon: '⛲', movable: false,
+    label: 'Water source', category: 'Liquids', icon: '⛲', movable: false, liquid: 'source', hang: { y: 2 },
     params: [
       { key: 'radius', label: 'Nozzle radius', kind: 'number', min: 0.02, max: 2, step: 0.005 },
       { key: 'speed', label: 'Speed (m/s)', kind: 'number', min: 0, max: 20, step: 0.05 },
@@ -775,6 +793,7 @@ export const ENTITY_DEFS: Record<EntityType, EntityDef> = {
 
   emitter: {
     label: 'Emitter', category: 'Sources', icon: '⇣', movable: false,
+    hang: { y: 5 }, spawnsLate: true, marker: (p) => ({ kind: 'cone', radius: Math.max(0.15, p.area), height: 0.5 }),
     params: [
       { key: 'shape', label: 'Shape', kind: 'select', options: ['box', 'sphere', 'mixed'] },
       { key: 'rate', label: 'Rate (/s)', kind: 'number', min: 0.1, max: 2000, step: 0.1 },
@@ -1157,7 +1176,7 @@ export function createEntity(type: EntityType, overrides: Partial<Entity> = {}):
     type,
     name: def.label,
     enabled: true,
-    position: [0, type === 'box' ? 0.5 : type === 'sphere' ? 0.5 : 0, 0],
+    position: [0, def.originY ?? 0, 0],
     rotation: [0, 0, 0],
     params: structuredClone(def.defaults),
     look: { ...defaultLook(), ...(def.look ?? {}) },

@@ -30,7 +30,7 @@ class OffscreenCapture {
   private prevSize = new THREE.Vector2();
   private prevAspect: number;
 
-  constructor(private app: App, readonly width: number, readonly height: number, private ss: number) {
+  constructor(private app: App, readonly width: number, readonly height: number, ss: number) {
     const { stage } = app;
     const r = stage.renderer;
     this.prevPixelRatio = r.getPixelRatio();

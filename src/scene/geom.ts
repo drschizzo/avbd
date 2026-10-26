@@ -7,6 +7,7 @@ export type Q4 = [number, number, number, number];
 
 export const v3 = (x: number, y: number, z: number): Vec3 => [x, y, z];
 export const DEG = Math.PI / 180;
+export const half = (s: Vec3): Vec3 => [s[0] / 2, s[1] / 2, s[2] / 2];
 
 export const qAxis = (ax: Vec3, angle: number): Q4 => {
   const q = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(...ax).normalize(), angle);

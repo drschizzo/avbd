@@ -3,7 +3,8 @@
 import * as THREE from 'three';
 import type { Entity, Finish, SceneDoc, Vec3 } from './doc';
 import { defaultMotion } from './doc';
-import { ENTITY_DEFS, type LocalBody, type LocalJoint, type Q4 } from './entities';
+import { ENTITY_DEFS, type LocalBody, type LocalJoint } from './entities';
+import { DEG, type Q4 } from './geom';
 import { PALETTES, hexToLinear, samplePalette } from './palettes';
 import { Rng, hashString } from './rng';
 import { buildFluid, type FluidBuilt } from '../fluid/fluidBuild';
@@ -61,8 +62,6 @@ export interface BuiltScene {
   fluid: FluidBuilt | null;
 }
 
-const DEG = Math.PI / 180;
-
 export function entityQuat(e: Entity): THREE.Quaternion {
   return new THREE.Quaternion().setFromEuler(new THREE.Euler(e.rotation[0] * DEG, e.rotation[1] * DEG, e.rotation[2] * DEG, 'XYZ'));
 }
@@ -78,7 +77,6 @@ function motionKind(k: string): number {
 }
 
 export interface BuildOptions {
-  onlyEntity?: string;
   /** solo: build only these entity ids */
   only?: Set<string>;
   /** robustness trials: nudge dynamic bodies by up to `amount` m / 10·amount rad */
@@ -92,17 +90,13 @@ export function buildScene(doc: SceneDoc, opts: BuildOptions = {}): BuiltScene {
   const joints: BuiltJoint[] = [];
   const motions: SimMotion[] = [];
 
-  // Emitters last so that dynamic spawns follow all initial bodies.
-  const order = doc.entities.map((e, i) => i).sort((a, b) => {
-    const ea = doc.entities[a].type === 'emitter' ? 1 : 0;
-    const eb = doc.entities[b].type === 'emitter' ? 1 : 0;
-    return ea - eb || a - b;
-  });
+  // Spawners last so that dynamic spawns follow all initial bodies.
+  const late = (i: number) => (ENTITY_DEFS[doc.entities[i].type]?.spawnsLate ? 1 : 0);
+  const order = doc.entities.map((e, i) => i).sort((a, b) => late(a) - late(b) || a - b);
 
   for (const ei of order) {
     const e = doc.entities[ei];
     if (!e.enabled) continue;
-    if (opts.onlyEntity && e.id !== opts.onlyEntity) continue;
     if (opts.only && !opts.only.has(e.id)) continue;
     const def = ENTITY_DEFS[e.type];
     if (!def) continue;
@@ -299,7 +293,7 @@ export function buildScene(doc: SceneDoc, opts: BuildOptions = {}): BuiltScene {
   const frames = Math.round(doc.duration * fps);
   const simFrames = doc.loop.mode === 'boomerang' ? Math.ceil(boomerangSpans(doc).sim * fps) + 1 : frames + 1;
 
-  const fluid = opts.onlyEntity ? null : buildFluid(doc, sorted, simFrames);
+  const fluid = buildFluid(doc, sorted, simFrames);
   if (fluid) {
     for (let i = 0; i < fluid.initialCount; i++) {
       for (let k = 0; k < 3; k++) { min[k] = Math.min(min[k], fluid.pos[i * 4 + k]); max[k] = Math.max(max[k], fluid.pos[i * 4 + k]); }

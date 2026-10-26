@@ -17,13 +17,14 @@ import type { SceneDoc } from '../scene/doc';
 import { hexToLinear } from '../scene/palettes';
 import { gaussianBlur } from 'three/addons/tsl/display/GaussianBlurNode.js';
 import { studioLights } from '../render/studioLights';
+import { releaseAttribute } from '../render/threeInternals';
 
 const TSL: any = TSLTyped;
 const {
   Fn, If, Discard, float, vec2, vec3, vec4, uniform, varying, storage, instanceIndex, positionGeometry, positionLocal,
   cameraViewMatrix, cameraProjectionMatrix, cameraProjectionMatrixInverse, cameraWorldMatrix, cameraNear, cameraFar,
   wgslFn, sqrt, dot, exp, max, abs, smoothstep, normalize, cross, reflect, pow, mix, select, screenUV, uv,
-  pmremTexture, getViewPosition, viewZToPerspectiveDepth, texture, passTexture, convertToTexture, Loop, uint, clamp,
+  pmremTexture, getViewPosition, viewZToPerspectiveDepth, passTexture, convertToTexture, Loop, uint, clamp,
 } = TSL;
 
 export const FLUID_LAYER_SHADOW = 1;
@@ -237,7 +238,7 @@ export class FluidRenderer {
       data[i * 2] = q(0) | (q(1) << 16);
       data[i * 2 + 1] = (q(2) | ((i < built.initialCount ? 1 : 0) << 31)) >>> 0;
     }
-    if (this.editAttr) { try { (this.renderer as any)._attributes?.delete(this.editAttr); } catch { /* noop */ } }
+    if (this.editAttr) releaseAttribute(this.renderer, this.editAttr);
     this.editAttr = new THREE.StorageBufferAttribute(data, 2);
     if (!sameLayout || this.meshes.length === 0) this.count = built.count;
     this.rebuild();

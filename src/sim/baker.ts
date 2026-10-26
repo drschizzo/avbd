@@ -5,13 +5,16 @@
 
 import { StorageBufferAttribute } from 'three/webgpu';
 import { PhysicsEngine } from '../engine/physics/PhysicsEngine';
-import { localId, storage, uniform, wgslFn, workgroupId } from '../engine/physics/gpu/tslCompat';
+import { localId, storage, uniform, wgsl, wgslFn, workgroupId } from '../engine/physics/gpu/tslCompat';
 import type { BuiltScene } from '../scene/build';
 import { KIND_DYNAMIC, KIND_KINEMATIC } from '../scene/build';
 import type { SceneDoc } from '../scene/doc';
 import { angularVelocity, composePose, evalMotion, type Q4, type V3 } from './motion';
 import { ComputeBatcher } from './batchedCompute';
 import { FluidSolver } from '../fluid/fluidSolver';
+import { QUAT_PACK_WGSL, writeRestPoses } from './poseCodec';
+import { planFluidHistory, planHistory } from './bakePlan';
+import { adoptGpuBuffer, releaseAttribute } from '../render/threeInternals';
 
 export interface FluidBakeResult {
   history: StorageBufferAttribute; // vec2u per particle per recorded frame
@@ -56,19 +59,6 @@ channel.port1.onmessage = () => { waiters.shift()?.(); };
 function yieldTask(): Promise<void> {
   return new Promise((r) => { waiters.push(r); channel.port2.postMessage(0); });
 }
-const BYTES_PER_SAMPLE = 16;
-
-function packQuat(q: Q4): number {
-  const a = [Math.abs(q[0]), Math.abs(q[1]), Math.abs(q[2]), Math.abs(q[3])];
-  let idx = 0;
-  for (let i = 1; i < 4; i++) if (a[i] > a[idx]) idx = i;
-  const s = q[idx] < 0 ? -1 : 1;
-  const c: number[] = [];
-  for (let i = 0; i < 4; i++) if (i !== idx) c.push(q[i] * s);
-  const enc = (v: number) => Math.max(0, Math.min(1023, Math.round((v * 0.70710678 + 0.5) * 1023)));
-  return (enc(c[0]) | (enc(c[1]) << 10) | (enc(c[2]) << 20) | (idx << 30)) >>> 0;
-}
-
 export const RECORD_WGSL = /* wgsl */`
   fn compute(
     positions: ptr<storage, array<vec4f>, read>,
@@ -82,20 +72,7 @@ export const RECORD_WGSL = /* wgsl */`
     let gid = workgroupId.x * ${WORKGROUP}u + localId.x;
     if (gid >= bodyCount) { return; }
     let p = positions[gid].xyz;
-    var q = normalize(quaternions[gid]);
-    let a = abs(q);
-    var idx = 0u;
-    var m = a.x;
-    if (a.y > m) { m = a.y; idx = 1u; }
-    if (a.z > m) { m = a.z; idx = 2u; }
-    if (a.w > m) { m = a.w; idx = 3u; }
-    var big = q.x;
-    if (idx == 1u) { big = q.y; } else if (idx == 2u) { big = q.z; } else if (idx == 3u) { big = q.w; }
-    if (big < 0.0) { q = -q; }
-    var c = q.yzw;
-    if (idx == 1u) { c = q.xzw; } else if (idx == 2u) { c = q.xyw; } else if (idx == 3u) { c = q.xyz; }
-    let e = vec3u(round(clamp(c * 0.70710678 + 0.5, vec3f(0.0), vec3f(1.0)) * 1023.0));
-    let packed = e.x | (e.y << 10u) | (e.z << 20u) | (idx << 30u);
+    let packed = hxPackQuat(quaternions[gid]);
     history[frameBase + gid] = vec4u(bitcast<u32>(p.x), bitcast<u32>(p.y), bitcast<u32>(p.z), packed);
   }
 `;
@@ -263,27 +240,13 @@ export class Baker {
     const fps = built.fps;
     const dtSim = (1 / fps) * doc.physics.timeScale;
 
-    // History budget
     const maxBinding = Number(this.device.limits.maxStorageBufferBindingSize);
-    const budget = Math.min(maxBinding, 1536 * 1024 * 1024);
-    let recordEvery = 1;
-    while (Math.ceil(F / recordEvery) * N * BYTES_PER_SAMPLE > budget && recordEvery < 8) recordEvery++;
-    // Continuous loops simulate the clip twice: a warm-up pass from the scene
-    // as built, then the recorded pass starting where the warm-up ended. The
-    // warm-up's last `outro` seconds are kept: they are the trajectory that
-    // leads into frame 0, which the loop blend steers each body onto.
-    const warm = doc.loop.mode === 'continuous';
-    const tailOf = (every: number) => warm ? Math.min(Math.ceil(F / every) - 1, Math.ceil((doc.loop.outro * fps) / every) + 2) : 0;
-    while ((Math.ceil(F / recordEvery) + tailOf(recordEvery)) * N * BYTES_PER_SAMPLE > budget && recordEvery < 8) recordEvery++;
-    const recFrames = Math.ceil(F / recordEvery);
-    const tailCount = tailOf(recordEvery);
-    const tailStart = recFrames - tailCount;
-    if ((recFrames + tailCount) * N * BYTES_PER_SAMPLE > budget) throw new Error('Scene too large for the GPU history buffer');
+    const { recordEvery, frames: recFrames, tailCount, tailStart, warm } = planHistory(N, F, fps, doc.loop, maxBinding);
 
     // Release the previous history before allocating the new one.
     const previous = this.result ?? this.currentPartial;
     if (previous) {
-      try { this.renderer._attributes?.delete(previous.history); } catch { /* noop */ }
+      releaseAttribute(this.renderer, previous.history);
       this.result = null;
       this.currentPartial = null;
     }
@@ -294,24 +257,21 @@ export class Baker {
 
     // Liquid: its own solver and history (8 bytes per particle per frame),
     // allocated directly on the GPU (no CPU mirror of hundreds of MB).
-    if (previous?.fluid) { try { this.renderer._attributes?.delete(previous.fluid.history); } catch { /* noop */ } }
+    if (previous?.fluid) releaseAttribute(this.renderer, previous.fluid.history);
     this.fluid?.dispose();
     this.fluid = null;
     let fluidRes: FluidBakeResult | null = null;
     const fl = built.fluid;
     if (fl) {
       this.fluid = new FluidSolver(this.device, fl, built.bodies, doc.fluid, fps, doc.physics.timeScale, doc.physics.gravity);
-      const maxBuf = Math.min(Number(this.device.limits.maxBufferSize), maxBinding, 1024 * 1024 * 1024);
-      let every = recordEvery;
-      while (Math.ceil(F / every) * fl.count * 8 > maxBuf && every < 8) every++;
-      const fFrames = Math.ceil(F / every);
+      const { recordEvery: every, frames: fFrames } = planFluidHistory(fl.count, F, recordEvery, Number(this.device.limits.maxBufferSize), maxBinding);
       const buffer = this.device.createBuffer({
         label: 'fluid.history', size: Math.max(16, fFrames * fl.count * 8),
         usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST | GPUBufferUsage.VERTEX,
       });
       // three.js adopts the buffer: the attribute's own array is never uploaded
       const attr = new StorageBufferAttribute(new Uint32Array(2), 2);
-      this.renderer.backend.get(attr).buffer = buffer;
+      adoptGpuBuffer(this.renderer, attr, buffer);
       this.fluid.bindHistory(buffer);
       fluidRes = { history: attr, count: fl.count, frames: fFrames, recordEvery: every };
     }
@@ -403,16 +363,7 @@ export class Baker {
     driveKinematics(0);
 
     // frame 0 straight from the scene description (engine buffers not yet on GPU)
-    const f32 = new Float32Array(1);
-    const u32 = new Uint32Array(f32.buffer);
-    const fbits = (x: number) => { f32[0] = x; return u32[0]; };
-    historyData.set([fbits(0), fbits(-0.5), fbits(0), packQuat([0, 0, 0, 1])], 0);
-    for (let i = 0; i < built.bodies.length; i++) {
-      const b = built.bodies[i];
-      const o = (i + 1) * 4;
-      historyData[o] = fbits(b.pos[0]); historyData[o + 1] = fbits(b.pos[1]); historyData[o + 2] = fbits(b.pos[2]);
-      historyData[o + 3] = packQuat(b.quat);
-    }
+    writeRestPoses(historyData, built.bodies);
     history.needsUpdate = true;
 
     const sinkFrame = doc.loop.mode === 'sink' && doc.physics.ground
@@ -596,7 +547,7 @@ export class Baker {
         data.set([b.vel[0], b.vel[1], b.vel[2], 0, b.angVel[0], b.angVel[1], b.angVel[2], 0], (i + 1) * 8);
       }
       if (!this.initVelAttr || this.initVelAttr.count !== engine.config.maxBodies * 2) {
-        if (this.initVelAttr) { try { this.renderer._attributes?.delete(this.initVelAttr); } catch { /* noop */ } }
+        if (this.initVelAttr) releaseAttribute(this.renderer, this.initVelAttr);
         this.initVelAttr = new StorageBufferAttribute(data, 4);
         this.velocityKernel = null;
       } else {
@@ -629,7 +580,7 @@ export class Baker {
     const buffers = engine.getRenderBuffers();
     if (!buffers) return;
     if (!this.recordKernel || this.recordKernelHistory !== history) {
-      const shader = wgslFn(RECORD_WGSL);
+      const shader = wgslFn(RECORD_WGSL, [wgsl(QUAT_PACK_WGSL)]);
       this.recordKernel = shader({
         positions: storage(buffers.positions, 'vec4f', engine.config.maxBodies).toReadOnly(),
         quaternions: storage(buffers.quaternions, 'vec4f', engine.config.maxBodies).toReadOnly(),

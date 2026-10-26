@@ -8,9 +8,11 @@
 
 import * as THREE from 'three';
 import type { App } from '../app';
+import type { AppEvent } from '../core/events';
 import type { Entity, Vec3 } from '../scene/doc';
 import { createEntity } from '../scene/entities';
 import { buildScene, entityQuat, type BuiltScene } from '../scene/build';
+import { round as r3 } from '../util/num';
 
 export interface TutHooks {
   /** the right-hand tab currently shown */
@@ -26,7 +28,7 @@ export interface TutCtx {
   /** scratch memory of the current step, emptied when it starts */
   mem: Record<string, any>;
   /** app events seen since the step started */
-  seen: Set<string>;
+  seen: Set<AppEvent>;
 }
 
 export interface Mark { p: Vec3; label: string }
@@ -50,7 +52,7 @@ export interface Step {
   /** called every frame while the step is shown */
   tick?(c: TutCtx): void;
   /** called on every app event while the step is shown */
-  on?(c: TutCtx, what: string): void;
+  on?(c: TutCtx, what: AppEvent): void;
   done?(c: TutCtx): boolean;
   /** extra line shown while the task is not done */
   hint?(c: TutCtx): string | null;
@@ -64,7 +66,6 @@ export interface Step {
 // ------------------------------------------------------------------ helpers
 
 const V = (v: Vec3) => new THREE.Vector3(...v);
-const r3 = (x: number) => Math.round(x * 1000) / 1000;
 const arr = (v: THREE.Vector3): Vec3 => [r3(v.x), r3(v.y), r3(v.z)];
 
 const first = (app: App, pred: (e: Entity) => boolean) => app.doc.entities.find(pred) ?? null;

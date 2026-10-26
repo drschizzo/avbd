@@ -8,7 +8,8 @@
 
 import type { Progress } from './course';
 import { CC, DH, DW, alpha, arrow, camFor, circle, dot, line, panel, px, py, text } from './draw';
-import { h, highlight } from './tourUI';
+import { highlight } from './tourUI';
+import { el as h } from '../util/dom';
 
 // =====================================================================
 // the kernel: a 2D solver whose steps are replaceable

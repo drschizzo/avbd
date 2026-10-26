@@ -9,9 +9,9 @@ import type { BuiltScene } from '../scene/build';
 import { KIND_DYNAMIC } from '../scene/build';
 import type { SceneDoc, Vec3 } from '../scene/doc';
 import { readFrames } from './loopMatch';
-import { unpackQuat } from '../render/bodies';
+import { unpackQuat } from './poseCodec';
 import { boomerangSpans } from './loopTime';
-import { isTrack } from '../scene/path';
+import { ENTITY_DEFS } from '../scene/entities';
 
 export type StepStatus = 'ok' | 'partial' | 'idle' | 'decor';
 
@@ -156,7 +156,7 @@ export function analyzeSamples(samples: Uint32Array[], times: number[], built: B
   doc.entities.forEach((e, ei) => {
     const list = byEntity.get(ei);
     if (!list || list.length === 0 || !e.enabled) return;
-    const chain = e.type === 'dominoes' || (e.type === 'path' && !isTrack(e.params.fill));
+    const chain = ENTITY_DEFS[e.type]?.chain?.(e.params) ?? false;
     let activated = 0, first = Infinity, last = -Infinity, lostN = 0;
     for (const i of list) {
       if (lost[i]) lostN++;

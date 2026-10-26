@@ -7,7 +7,7 @@ import * as THREE from 'three';
 import type { Vec3 } from './doc';
 import type { BuildCtx, EntityDef, Port } from './entities';
 import { DEG, qAxis, v3, type Q4 } from './geom';
-import { FILL_DEFAULTS, PATH_FILLS, buildPath, isTrack, pathPorts } from './path';
+import { FILL_DEFAULTS, PATH_FILLS, buildPath, isTrack, pathPorts, type PathFill } from './path';
 
 const DARK = '#2b2d33';
 
@@ -64,7 +64,18 @@ function post(ctx: BuildCtx, top: Vec3, r: number, color = DARK): void {
 
 export const GADGET_DEFS = {
   path: {
-    label: 'Drawn path', category: 'Gadgets', icon: '〰', movable: false,
+    label: 'Drawn path', category: 'Gadgets', icon: '〰', movable: false, chain: (p) => !isTrack(p.fill),
+    onParamChange(e, key) {
+      if (key !== 'fill') return false;
+      // a new fill brings its own sizes, body kind and look
+      const f = e.params.fill as PathFill;
+      e.params.size = [...FILL_DEFAULTS[f].size];
+      e.params.spacing = FILL_DEFAULTS[f].spacing;
+      e.phys.body = isTrack(f) ? 'static' : 'dynamic';
+      if (isTrack(f)) e.look = { ...e.look, colorMode: 'single', color: '', finish: 'satin' };
+      else if (e.look.colorMode === 'single' && !e.look.color) e.look = { ...e.look, colorMode: 'gradient', finish: 'gloss' };
+      return true;
+    },
     params: [
       { key: 'fill', label: 'Fill', kind: 'select', options: PATH_FILLS },
       { key: 'size', label: 'Item (t,h,w)', kind: 'vec3', min: 0.01, max: 5, step: 0.005, show: (p: any) => !isTrack(p.fill) },
@@ -364,6 +375,7 @@ export const GADGET_DEFS = {
 
   sensor: {
     label: 'Sensor', category: 'Testing', icon: '◫', movable: false,
+    hang: {}, marker: (p) => ({ kind: 'box', size: p.size }),
     params: [
       { key: 'size', label: 'Zone size', kind: 'vec3', min: 0.02, max: 40, step: 0.01 },
       { key: 'watch', label: 'Watch', kind: 'entity', help: 'Which object must enter the zone (any = any moving body)' },

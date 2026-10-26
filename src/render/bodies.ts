@@ -11,7 +11,7 @@ const TSL: any = TSLTyped;
 const {
   float, instancedBufferAttribute, normalLocal, positionLocal, positionWorld, storage, transformNormalToView,
   uniform, uint, varying, vec3, vec4, wgsl, wgslFn, select, mrt, output, normalize, cameraPosition, reflect, dot, abs,
-  pow, clamp, pmremTexture, mix,
+  pow, clamp, pmremTexture,
 } = TSL;
 import { studioLights } from './studioLights';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
@@ -19,17 +19,11 @@ import type { BuiltScene } from '../scene/build';
 import { KIND_DYNAMIC } from '../scene/build';
 import type { Finish, SceneDoc } from '../scene/doc';
 import type { BakeResult } from '../sim/baker';
+import { QUAT_UNPACK_WGSL, packQuat, unpackQuat, writeRestPoses } from '../sim/poseCodec';
+import { releaseAttribute } from './threeInternals';
 
 const helpers = wgsl(/* wgsl */`
-  fn hxDecodeQuat(p: u32) -> vec4f {
-    let idx = p >> 30u;
-    let c = (vec3f(f32(p & 1023u), f32((p >> 10u) & 1023u), f32((p >> 20u) & 1023u)) / 1023.0 - 0.5) * 1.41421356;
-    let w = sqrt(max(0.0, 1.0 - dot(c, c)));
-    if (idx == 0u) { return vec4f(w, c.x, c.y, c.z); }
-    if (idx == 1u) { return vec4f(c.x, w, c.y, c.z); }
-    if (idx == 2u) { return vec4f(c.x, c.y, w, c.z); }
-    return vec4f(c.x, c.y, c.z, w);
-  }
+  ${QUAT_UNPACK_WGSL}
   fn hxPos(r: vec4u) -> vec3f { return vec3f(bitcast<f32>(r.x), bitcast<f32>(r.y), bitcast<f32>(r.z)); }
   fn hxNlerp(a: vec4f, b: vec4f, t: f32) -> vec4f {
     var bb = b;
@@ -272,7 +266,7 @@ export class BodyRenderer {
       this.resetLoopTargets();
       this.layoutKey = '';
     }
-    writePoses(this.editData, built);
+    writeRestPoses(this.editData, built.bodies);
     this.editAttr!.needsUpdate = true;
 
     if (key !== this.layoutKey) {
@@ -589,7 +583,7 @@ export class BodyRenderer {
   }
 
   private releaseAttr(a: THREE.StorageBufferAttribute): void {
-    try { (this.renderer as any)._attributes?.delete(a); } catch { /* noop */ }
+    releaseAttribute(this.renderer, a);
   }
 }
 
@@ -603,41 +597,6 @@ function attrId(a: object): number {
 
 function groupOf(f: Finish): Group {
   return f === 'glass' ? 'glass' : f === 'hidden' ? 'ghost' : 'opaque';
-}
-
-const f32 = new Float32Array(1);
-const u32 = new Uint32Array(f32.buffer);
-function fbits(x: number): number { f32[0] = x; return u32[0]; }
-
-export function packQuat(q: ArrayLike<number>): number {
-  const a = [Math.abs(q[0]), Math.abs(q[1]), Math.abs(q[2]), Math.abs(q[3])];
-  let idx = 0;
-  for (let i = 1; i < 4; i++) if (a[i] > a[idx]) idx = i;
-  const s = q[idx] < 0 ? -1 : 1;
-  const c: number[] = [];
-  for (let i = 0; i < 4; i++) if (i !== idx) c.push(q[i] * s);
-  const enc = (v: number) => Math.max(0, Math.min(1023, Math.round((v * 0.70710678 + 0.5) * 1023)));
-  return (enc(c[0]) | (enc(c[1]) << 10) | (enc(c[2]) << 20) | (idx << 30)) >>> 0;
-}
-
-/** Inverse of packQuat (smallest-three, 10 bits each). */
-export function unpackQuat(v: number, out: number[]): number[] {
-  const idx = v >>> 30;
-  const dec = (x: number) => ((x & 1023) / 1023 - 0.5) / 0.70710678;
-  const c = [dec(v), dec(v >>> 10), dec(v >>> 20)];
-  const w = Math.sqrt(Math.max(0, 1 - c[0] * c[0] - c[1] * c[1] - c[2] * c[2]));
-  for (let i = 0, j = 0; i < 4; i++) out[i] = i === idx ? w : c[j++];
-  return out;
-}
-
-function writePoses(out: Uint32Array, built: BuiltScene): void {
-  out[0] = fbits(0); out[1] = fbits(-0.5); out[2] = fbits(0); out[3] = packQuat([0, 0, 0, 1]);
-  for (let i = 0; i < built.bodies.length; i++) {
-    const b = built.bodies[i];
-    const o = (i + 1) * 4;
-    out[o] = fbits(b.pos[0]); out[o + 1] = fbits(b.pos[1]); out[o + 2] = fbits(b.pos[2]);
-    out[o + 3] = packQuat(b.quat);
-  }
 }
 
 function raySphere(o: THREE.Vector3, d: THREE.Vector3, r: number): number {

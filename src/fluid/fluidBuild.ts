@@ -3,7 +3,8 @@
 // always a prefix [0, activeCount) of the GPU buffers.
 
 import * as THREE from 'three';
-import type { SceneDoc, Vec3 } from '../scene/doc';
+import type { Entity, SceneDoc, Vec3 } from '../scene/doc';
+import { ENTITY_DEFS } from '../scene/entities';
 import { entityQuat, type BuiltBody } from '../scene/build';
 import { Rng, hashString } from '../scene/rng';
 
@@ -30,8 +31,9 @@ export interface FluidBuilt {
 const MAX_NODES = 2_600_000;
 
 export function buildFluid(doc: SceneDoc, bodies: BuiltBody[], simFrames: number): FluidBuilt | null {
-  const blocks = doc.entities.filter((e) => e.enabled && e.type === 'fluidBlock');
-  const sources = doc.entities.filter((e) => e.enabled && e.type === 'fluidSource');
+  const liquid = (e: Entity) => ENTITY_DEFS[e.type]?.liquid;
+  const blocks = doc.entities.filter((e) => e.enabled && liquid(e) === 'block');
+  const sources = doc.entities.filter((e) => e.enabled && liquid(e) === 'source');
   if (blocks.length === 0 && sources.length === 0) return null;
   const fs = doc.fluid;
   let h = Math.max(0.01, fs.cell);

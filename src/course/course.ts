@@ -1,6 +1,7 @@
 // Course structure: modules, saved progress, home page and module cards.
 
 import type { Tour } from './tour';
+import { KEYS, readJSON, writeJSON } from '../util/storage';
 
 export interface ModuleDef {
   id: string;
@@ -69,7 +70,6 @@ export const CORE = MODULES.filter((m) => !m.bonus).length;
 
 // ------------------------------------------------------------- progression
 
-const KEY = 'avbd.course.v1';
 
 /** former chapter titles → current ones */
 const RENAMED: Record<string, string> = {
@@ -113,11 +113,11 @@ export class Progress {
   d: ProgressData = empty();
 
   constructor() {
-    try { Object.assign(this.d, JSON.parse(localStorage.getItem(KEY) || '{}')); } catch { /* storage off */ }
+    Object.assign(this.d, readJSON(KEYS.course, {}));
     // chapters are remembered by title: carry progress over renamed ones
     for (const [old, cur] of Object.entries(RENAMED)) if (this.d.seen[old]) { this.d.seen[cur] = 1; delete this.d.seen[old]; }
   }
-  save(): void { try { localStorage.setItem(KEY, JSON.stringify(this.d)); } catch { /* quota */ } }
+  save(): void { writeJSON(KEYS.course, this.d); }
   reset(): void { this.d = empty(); this.save(); }
   get started(): boolean { return this.d.maxT > 5; }
   setT(t: number): void { this.d.lastT = t; this.d.maxT = Math.max(this.d.maxT, t); }

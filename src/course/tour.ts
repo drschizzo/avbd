@@ -109,8 +109,6 @@ export interface Stop {
 /** The pipeline of a physics step, lit progressively in the chapter badges. */
 export const LAYERS = ['Prédiction', 'Détection', 'Contraintes', 'Itérations', 'λ et β', 'Vitesses', 'Parallèle'];
 
-const clamp01 = (x: number) => Math.min(1, Math.max(0, x));
-
 export class Tour {
   t = 0;
   playing = true;
@@ -263,7 +261,6 @@ export class Tour {
       // the learner is in still overrides them
       if (patch) this.sets.push({ t: at(t), patch });
     };
-    const SET = (t: number, patch: Partial<Vals>) => { this.sets.push({ t: at(t), patch }); };
     const I = (t: number, until: number, spec: Omit<Stop, 't' | 'until' | 'kind' | 'ov' | 'id' | 'controls'> & { id?: string; controls?: Control[] }) => {
       this.stops.push({ controls: [], ...spec, t: at(t), until: at(until), kind: 'try', id: spec.id ?? spec.title, ov: {} });
     };

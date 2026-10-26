@@ -18,6 +18,7 @@ import { REQUESTED_MAX_STORAGE_BUFFERS_PER_SHADER_STAGE } from '../engine/gpuLim
 import type { SceneDoc } from '../scene/doc';
 import { PALETTES, hexToLinear } from '../scene/palettes';
 import { FLUID_LAYER_SHADOW, type FluidRenderer } from '../fluid/fluidRender';
+import { advanceNodeFrame } from './threeInternals';
 
 export async function createDevice(): Promise<GPUDevice> {
   if (!navigator.gpu) throw new Error('WebGPU is not available in this browser.');
@@ -294,7 +295,7 @@ export class Stage {
    * image, which duplicated frames in exports.
    */
   renderOffscreen(): void {
-    (this.renderer as any)._nodes?.nodeFrame?.update();
+    advanceNodeFrame(this.renderer);
     this.pipeline.render();
   }
 

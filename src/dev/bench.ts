@@ -70,9 +70,7 @@ export function installBench(app: App): void {
   // intervals while it bakes (needs a visible page). `paced: false` uses the
   // throughput bake (no display pacing) for comparison.
   const loadTest = async (key: string, paced = true) => {
-    const saved = app.baker.paced;
-    app.baker.paced = paced;
-    app.autoBake = false;
+    const layer = app.pushSettings({ pacedBake: paced, autoBake: false });
     // Intervals between preview renders (not rAF ticks, which may be skipped).
     const iv: number[] = [];
     const t0 = performance.now();
@@ -91,7 +89,7 @@ export function installBench(app: App): void {
       await app.bake();
     } finally {
       stage.render = render;
-      app.baker.paced = saved;
+      layer.pop();
     }
     const total = performance.now() - t0;
     iv.sort((a, b) => a - b);

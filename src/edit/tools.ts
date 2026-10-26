@@ -10,6 +10,8 @@ import { ENTITY_DEFS, createEntity, type Port } from '../scene/entities';
 import { entityQuat } from '../scene/build';
 import { FILL_DEFAULTS, densePath, isTrack, simplify, type PathFill } from '../scene/path';
 import { castScene, entityBounds } from './raycast';
+import { KEYS, readJSON, writeJSON } from '../util/storage';
+import { round as r3 } from '../util/num';
 
 export type Tool = 'select' | 'draw';
 export type PlaneAxis = 'off' | 'xy' | 'zy' | 'xz';
@@ -18,13 +20,10 @@ export const FILL_LABEL: Record<PathFill, string> = {
   dominoes: 'Domino run', marbles: 'Marble row', blocks: 'Block row', rail: 'Rail', track: 'Track', wall: 'Guide wall',
 };
 
-const CLIP_KEY = 'looplab.clipboard.v1';
-const LIB_KEY = 'looplab.gadgets.v1';
 const SNAP_DIST = 0.3;
 
 export interface SavedGadget { name: string; entities: Entity[] }
 
-const r3 = (x: number) => Math.round(x * 1000) / 1000;
 
 export class EditTools {
   readonly root = new THREE.Group();
@@ -65,7 +64,7 @@ export class EditTools {
     gm.transparent = true; gm.opacity = 0.28; gm.depthWrite = false;
     this.grid.visible = false;
     this.root.add(this.strokeLine, this.curveLine, this.grid, this.handleRoot, this.portRoot);
-    try { this.clipboard = JSON.parse(localStorage.getItem(CLIP_KEY) ?? '[]'); } catch { this.clipboard = []; }
+    this.clipboard = readJSON<Entity[]>(KEYS.clipboard, []);
     this.install();
   }
 
@@ -192,7 +191,7 @@ export class EditTools {
     for (const e of ents) offsets.set(e.id, new THREE.Vector3(...e.position).sub(anchor));
     this.placing = { ids, offsets, half: box.getSize(new THREE.Vector3()).multiplyScalar(0.5), removeOnCancel: opts.removeOnCancel, moved: false };
     this.canvas.style.cursor = 'copy';
-    this.app.updateSelectionVisuals();
+    this.app.view.updateSelectionVisuals();
     // already over the viewport: jump under the cursor right away
     if (this.lastPointer && document.elementFromPoint(this.lastPointer.clientX, this.lastPointer.clientY) === this.canvas) this.movePlacement(this.lastPointer);
     this.app.emit('tool');
@@ -358,7 +357,7 @@ export class EditTools {
     this.handleIndex = null;
     this.activeHandle = null;
     this.refreshHandles();
-    if (update) { this.app.updateSelectionVisuals(); this.app.emit('select'); }
+    if (update) { this.app.view.updateSelectionVisuals(); this.app.emit('select'); }
   }
 
   /** Gizmo moved while a control point is active. */
@@ -385,7 +384,7 @@ export class EditTools {
     this.handleIndex = null;
     this.activeHandle = null;
     this.app.commit('physics');
-    this.app.updateSelectionVisuals();
+    this.app.view.updateSelectionVisuals();
     return true;
   }
 
@@ -495,7 +494,7 @@ export class EditTools {
     }
     this.plane.axis = axis;
     this.refresh();
-    this.app.updateSelectionVisuals();
+    this.app.view.updateSelectionVisuals();
     this.app.emit('tool');
   }
 
@@ -617,7 +616,7 @@ export class EditTools {
     const list = this.app.selectedEntities;
     if (list.length === 0) return 0;
     this.clipboard = structuredClone(list);
-    try { localStorage.setItem(CLIP_KEY, JSON.stringify(this.clipboard)); } catch { /* ignore */ }
+    writeJSON(KEYS.clipboard, this.clipboard);
     try { void navigator.clipboard?.writeText(JSON.stringify({ looplab: 'entities', entities: this.clipboard })); } catch { /* ignore */ }
     return list.length;
   }
@@ -640,7 +639,7 @@ export class EditTools {
   // ------------------------------------------------------------ library
 
   gadgets(): SavedGadget[] {
-    try { return JSON.parse(localStorage.getItem(LIB_KEY) ?? '[]'); } catch { return []; }
+    return readJSON<SavedGadget[]>(KEYS.gadgets, []);
   }
 
   saveGadget(name: string): boolean {
@@ -648,7 +647,7 @@ export class EditTools {
     if (list.length === 0) return false;
     const lib = this.gadgets();
     lib.push({ name, entities: structuredClone(list) });
-    try { localStorage.setItem(LIB_KEY, JSON.stringify(lib)); } catch { return false; }
+    if (!writeJSON(KEYS.gadgets, lib)) return false;
     this.app.emit('library');
     return true;
   }
@@ -656,7 +655,7 @@ export class EditTools {
   deleteGadget(i: number): void {
     const lib = this.gadgets();
     lib.splice(i, 1);
-    try { localStorage.setItem(LIB_KEY, JSON.stringify(lib)); } catch { /* ignore */ }
+    writeJSON(KEYS.gadgets, lib);
     this.app.emit('library');
   }
 

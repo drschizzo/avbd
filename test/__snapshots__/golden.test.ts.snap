@@ -1,0 +1,243 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`buildScene golden master > bridge 1`] = `
+{
+  "bodies": 142,
+  "fluid": null,
+  "hash": "9df6da04c84dcd330fc3e9d67e213f98d7169a83",
+  "joints": 46,
+  "motions": 0,
+  "simFrames": 601,
+}
+`;
+
+exports[`buildScene golden master > cannonball 1`] = `
+{
+  "bodies": 5,
+  "fluid": 81675,
+  "hash": "07b1bceee052f00f7cfd21f960a95e3df667a526",
+  "joints": 0,
+  "motions": 0,
+  "simFrames": 347,
+}
+`;
+
+exports[`buildScene golden master > catapult-machine 1`] = `
+{
+  "bodies": 36,
+  "fluid": null,
+  "hash": "36c2c971affe5083d45188bebdc31beb261ced6a",
+  "joints": 13,
+  "motions": 1,
+  "simFrames": 371,
+}
+`;
+
+exports[`buildScene golden master > cube-rain 1`] = `
+{
+  "bodies": 2704,
+  "fluid": null,
+  "hash": "2ebcf0c676b0abf4f26be21ad7380b7dc0a3133b",
+  "joints": 0,
+  "motions": 0,
+  "simFrames": 601,
+}
+`;
+
+exports[`buildScene golden master > curtain 1`] = `
+{
+  "bodies": 521,
+  "fluid": null,
+  "hash": "4a3ecad31fb0767e7355f2e5390b2b84bec48fe6",
+  "joints": 520,
+  "motions": 1,
+  "simFrames": 601,
+}
+`;
+
+exports[`buildScene golden master > dam-break 1`] = `
+{
+  "bodies": 19,
+  "fluid": 49728,
+  "hash": "20f1e6580a334e75e01b389a88eca190528c2406",
+  "joints": 0,
+  "motions": 0,
+  "simFrames": 363,
+}
+`;
+
+exports[`buildScene golden master > domino-spiral 1`] = `
+{
+  "bodies": 190,
+  "fluid": null,
+  "hash": "90de84d5293c4bc26aad401aabdaf90cef7e0d26",
+  "joints": 0,
+  "motions": 0,
+  "simFrames": 601,
+}
+`;
+
+exports[`buildScene golden master > fill-drain 1`] = `
+{
+  "bodies": 11,
+  "fluid": 40734,
+  "hash": "4e287fe4a75f7d5e2cb6723e62669053af9a9d3d",
+  "joints": 0,
+  "motions": 0,
+  "simFrames": 601,
+}
+`;
+
+exports[`buildScene golden master > funnel 1`] = `
+{
+  "bodies": 478,
+  "fluid": null,
+  "hash": "e19ac0a7f259343968d612b6e6d4ca3001675bf6",
+  "joints": 0,
+  "motions": 0,
+  "simFrames": 601,
+}
+`;
+
+exports[`buildScene golden master > galton 1`] = `
+{
+  "bodies": 635,
+  "fluid": null,
+  "hash": "6174338c08934ff0e32ad8318c610527ace571e9",
+  "joints": 0,
+  "motions": 1,
+  "simFrames": 501,
+}
+`;
+
+exports[`buildScene golden master > glued-wall 1`] = `
+{
+  "bodies": 178,
+  "fluid": null,
+  "hash": "1567061dcddac367f4a61f28dee18e981c236c5a",
+  "joints": 473,
+  "motions": 0,
+  "simFrames": 385,
+}
+`;
+
+exports[`buildScene golden master > grand-machine 1`] = `
+{
+  "bodies": 1487,
+  "fluid": null,
+  "hash": "75b7034e3a33b909f889d18dfc6c0da440ee0cc9",
+  "joints": 72,
+  "motions": 32,
+  "simFrames": 1476,
+}
+`;
+
+exports[`buildScene golden master > hourglass 1`] = `
+{
+  "bodies": 1599,
+  "fluid": null,
+  "hash": "431b0f5fdd2a53365f72c6f533accd525b443ed8",
+  "joints": 0,
+  "motions": 1,
+  "simFrames": 601,
+}
+`;
+
+exports[`buildScene golden master > marble-run 1`] = `
+{
+  "bodies": 193,
+  "fluid": null,
+  "hash": "86d2459f996d9de54eeeabeeac4b7583a4def86c",
+  "joints": 0,
+  "motions": 1,
+  "simFrames": 716,
+}
+`;
+
+exports[`buildScene golden master > mixer 1`] = `
+{
+  "bodies": 582,
+  "fluid": null,
+  "hash": "db0c06ee114741206c774824f9ee994388c1bf3d",
+  "joints": 0,
+  "motions": 1,
+  "simFrames": 601,
+}
+`;
+
+exports[`buildScene golden master > pendulum-wave 1`] = `
+{
+  "bodies": 34,
+  "fluid": null,
+  "hash": "487ec8ff84f535d0b28495f5b437c5508f6b47ba",
+  "joints": 0,
+  "motions": 15,
+  "simFrames": 901,
+}
+`;
+
+exports[`buildScene golden master > pyramid 1`] = `
+{
+  "bodies": 507,
+  "fluid": null,
+  "hash": "f4420bdf6fbdfcae5763b88156921adfc8ded959",
+  "joints": 0,
+  "motions": 0,
+  "simFrames": 292,
+}
+`;
+
+exports[`buildScene golden master > stairs 1`] = `
+{
+  "bodies": 368,
+  "fluid": null,
+  "hash": "e82d970b19aed32901900abb5580ff1073e831ac",
+  "joints": 0,
+  "motions": 0,
+  "simFrames": 601,
+}
+`;
+
+exports[`buildScene golden master > tumbler 1`] = `
+{
+  "bodies": 269,
+  "fluid": null,
+  "hash": "f5fa2f2eacea3c81ddafe23db35f531014c29e52",
+  "joints": 0,
+  "motions": 1,
+  "simFrames": 601,
+}
+`;
+
+exports[`buildScene golden master > water-wheel 1`] = `
+{
+  "bodies": 19,
+  "fluid": 39780,
+  "hash": "7ddc70223883326b08a7b4ef877cd9a4ced4a42e",
+  "joints": 0,
+  "motions": 1,
+  "simFrames": 601,
+}
+`;
+
+exports[`buildScene golden master > workshop 1`] = `
+{
+  "bodies": 0,
+  "fluid": null,
+  "hash": "c6cd4391b8d9a31de9c36f01d2da88591988c184",
+  "joints": 0,
+  "motions": 0,
+  "simFrames": 436,
+}
+`;
+
+exports[`buildScene golden master > wrecking-ball 1`] = `
+{
+  "bodies": 330,
+  "fluid": null,
+  "hash": "b68e16e6af5bcface6753d742add62190b9562eb",
+  "joints": 10,
+  "motions": 0,
+  "simFrames": 333,
+}
+`;

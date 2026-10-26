@@ -7,6 +7,10 @@ import * as THREE from 'three';
 import type { App } from '../app';
 import { PARTS, STEPS, type Step, type TutCtx, type TutHooks } from './steps';
 import './style.css';
+import type { SceneDoc } from '../scene/doc';
+import type { SettingsLayer } from '../core/context';
+import { el } from '../util/dom';
+import { KEYS, readJSON, readText, removeKey, writeJSON } from '../util/storage';
 
 export interface Tutorial {
   open(): void;
@@ -14,33 +18,23 @@ export interface Tutorial {
   readonly active: boolean;
 }
 
-const STORE = 'looplab.tutorial';
-const BACKUP = 'looplab.tutorial.backup';
-
 interface Saved { step: number; finished?: boolean }
 
-const load = (): Saved | null => {
-  try { const s = localStorage.getItem(STORE); return s ? JSON.parse(s) : null; } catch { return null; }
-};
-const save = (s: Saved) => { try { localStorage.setItem(STORE, JSON.stringify(s)); } catch { /* ignore */ } };
+const load = (): Saved | null => readJSON<Saved | null>(KEYS.tutorial, null);
+const save = (s: Saved) => { writeJSON(KEYS.tutorial, s); };
 
 /** True until the learner has opened the tutorial once. */
 export function tutorialNeverOpened(): boolean {
   return load() === null;
 }
 
-const el = <K extends keyof HTMLElementTagNameMap>(tag: K, cls?: string, html?: string): HTMLElementTagNameMap[K] => {
-  const e = document.createElement(tag);
-  if (cls) e.className = cls;
-  if (html !== undefined) e.innerHTML = html;
-  return e;
-};
-
 /** Index of the first step of each part. */
 const partStart = (p: number) => STEPS.findIndex((s) => s.part === p);
 
 export function mountTutorial(app: App, ui: TutHooks): Tutorial {
   let active = false;
+  /** keeps the editor in edit mode during building steps */
+  let settings: SettingsLayer | null = null;
   let index = 0;
   let raf = 0;
   let ctx: TutCtx = { app, ui, mem: {}, seen: new Set() };
@@ -256,7 +250,7 @@ export function mountTutorial(app: App, ui: TutHooks): Tutorial {
     const s = step();
     // the course borrows the viewport and plays its own scenes: stand aside
     const course = document.body.classList.contains('course-on');
-    app.holdEdit = !course && !!s.edit;
+    settings?.set({ holdEdit: !course && !!s.edit });
     if (course) return;
     if (s.tick) safe(() => s.tick!(ctx), undefined);
     const now = performance.now();
@@ -281,7 +275,7 @@ export function mountTutorial(app: App, ui: TutHooks): Tutorial {
     ctx = { app, ui, mem: {}, seen: new Set() };
     save({ step: index });
     const s = step();
-    app.holdEdit = !!s.edit;
+    settings?.set({ holdEdit: !!s.edit });
     if (s.edit && app.mode === 'play') app.setMode('edit');
     if (s.enter) safe(() => s.enter!(ctx), undefined);
     renderCard();
@@ -356,7 +350,7 @@ export function mountTutorial(app: App, ui: TutHooks): Tutorial {
 
   const finish = () => {
     if (!active) return;
-    const changed = (() => { try { return localStorage.getItem(BACKUP) !== JSON.stringify(app.doc); } catch { return false; } })();
+    const changed = readText(KEYS.tutorialBackup) !== JSON.stringify(app.doc);
     if (!changed) { teardown(); return; }
     // offer to bring back the scene they had before the tour
     const bg = el('div', 'modal-bg');
@@ -372,21 +366,20 @@ export function mountTutorial(app: App, ui: TutHooks): Tutorial {
     keep.onclick = () => { bg.remove(); teardown(); };
     back.onclick = () => {
       bg.remove();
-      try {
-        const s = localStorage.getItem(BACKUP);
-        if (s) { app.pushUndo(); app.setDoc(JSON.parse(s)); app.saveNow(); }
-      } catch { /* ignore */ }
+      const s = readJSON<SceneDoc | null>(KEYS.tutorialBackup, null);
+      if (s) { app.pushUndo(); app.setDoc(s); app.saveNow(); }
       teardown();
     };
   };
 
   const teardown = () => {
     active = false;
-    app.holdEdit = false;
+    settings?.pop();
+    settings = null;
     cancelAnimationFrame(raf);
     root.classList.add('hidden');
     document.body.classList.remove('tut-on');
-    try { localStorage.removeItem(BACKUP); } catch { /* ignore */ }
+    removeKey(KEYS.tutorialBackup);
   };
 
   // dev console: tutorial.go(i), tutorial.list()
@@ -397,7 +390,8 @@ export function mountTutorial(app: App, ui: TutHooks): Tutorial {
     open() {
       if (active) { setMin(false); return; }
       active = true;
-      try { if (!localStorage.getItem(BACKUP)) localStorage.setItem(BACKUP, JSON.stringify(app.doc)); } catch { /* ignore */ }
+      settings = app.pushSettings();
+      if (readText(KEYS.tutorialBackup) === null) writeJSON(KEYS.tutorialBackup, app.doc);
       root.classList.remove('hidden');
       document.body.classList.add('tut-on');
       setMin(false);

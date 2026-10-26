@@ -28,7 +28,7 @@ export class ComputeBatcher {
   private queryNames: string[] = [];
   private readonly maxQueries = 4096;
 
-  constructor(private device: GPUDevice, private backend: any) {
+  constructor(private device: GPUDevice, backend: any) {
     this.staging = device.createBuffer({ size: this.ringSize, usage: GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST, label: 'batch-staging' });
     const queue = device.queue;
     this.origWrite = queue.writeBuffer.bind(queue);

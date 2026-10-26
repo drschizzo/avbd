@@ -2,6 +2,7 @@
 // the solver settings, and runs its own narration clock.
 
 import type { App } from '../app';
+import type { SettingsLayer } from '../core/context';
 import { MODULES, Progress } from './course';
 import { HomeUI } from './home';
 import { SCENES, sceneDoc, type SceneKey } from './scenes';
@@ -81,7 +82,6 @@ export function mountCourse(app: App): Course {
       const doc = sceneDoc(key);
       applyVals(doc, vals);
       lastDocVals = { ...vals };
-      app.autoBake = true;
       app.setDoc(doc);
       app.loopPlayback = true;
       app.freeCamera = false;
@@ -246,21 +246,17 @@ export function mountCourse(app: App): Course {
   }
 
   let savedDoc: string | null = null;
-  let savedAuto = true;
-  let savedPaced = true;
+  let settings: SettingsLayer | null = null;
 
   function open(): void {
     if (active) return;
     active = true;
     savedDoc = JSON.stringify(app.doc);
-    savedAuto = app.autoBake;
-    // the course re-bakes on every solver tweak: throughput beats a fluid
-    // preview here, a paced bake would take seconds per slider move
-    savedPaced = app.baker.paced;
-    app.baker.paced = false;
     // the course's scenes must not replace the user's saved document, nor
-    // show up in their undo history
-    app.persist = false;
+    // show up in their undo history; it re-bakes on every solver tweak:
+    // throughput beats a fluid preview here, a paced bake would take seconds
+    // per slider move
+    settings = app.pushSettings({ persist: false, autoBake: true, pacedBake: false });
     document.body.classList.add('course-on');
     root.classList.remove('hidden');
     mode = 'home';
@@ -290,10 +286,9 @@ export function mountCourse(app: App): Course {
     home.hideCard();
     ui.show(false);
     prog.save();
-    app.autoBake = savedAuto;
-    app.baker.paced = savedPaced;
+    settings?.pop();
+    settings = null;
     if (savedDoc) app.setDoc(JSON.parse(savedDoc), { resetHistory: false });
-    app.persist = true;
     app.saveNow();
     curScene = null;
     window.dispatchEvent(new Event('resize'));

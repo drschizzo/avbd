@@ -2,7 +2,7 @@
 
 import { CORE, MODULES, moduleStats, type Progress } from './course';
 import type { Stop, Tour } from './tour';
-import { h } from './tourUI';
+import { el as h } from '../util/dom';
 
 const mins = (s: number) => `≈ ${Math.max(1, Math.round(s / 60))} min`;
 const clock = (s: number) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
