@@ -1,0 +1,21 @@
+{
+  "name": "avbd-loop-lab",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "mp4-muxer": "^5.2.1",
+    "three": "^0.183.2",
+    "tweakpane": "^4.0.5"
+  },
+  "devDependencies": {
+    "@types/three": "^0.183.1",
+    "typescript": "^5.6.3",
+    "vite": "^6.0.0"
+  }
+}

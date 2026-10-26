@@ -1,0 +1,129 @@
+/* Guided tour. Everything is prefixed tut- : the editor's stylesheet owns
+   short class names (.left, .right, .top, .seg, .time…). The root lets every
+   click through; only the card and the reduced pill catch the pointer. */
+
+.tut-root { position: fixed; inset: 0; z-index: 45; pointer-events: none; font: 13px/1.5 Inter, system-ui, sans-serif; color: var(--text); }
+.tut-root.hidden, .tut-root .hidden { display: none !important; }
+/* the course takes the whole window: the tour waits underneath */
+body.course-on .tut-root, body.course-on .tut-invite { display: none; }
+
+/* ---------------------------------------------------------------- spotlight */
+.tut-spot {
+  position: fixed; border-radius: 12px; pointer-events: none;
+  border: 2px solid var(--accent);
+  box-shadow: 0 0 0 9999px rgba(5, 6, 10, .38), 0 0 24px rgba(124, 156, 255, .55);
+  transition: left .25s ease, top .25s ease, width .25s ease, height .25s ease;
+  animation: tutGlow 1.8s ease-in-out infinite;
+  z-index: -1;
+}
+.tut-spot.soft { box-shadow: 0 0 24px rgba(124, 156, 255, .4); border-style: dashed; border-color: rgba(124, 156, 255, .6); animation: none; }
+@keyframes tutGlow { 50% { border-color: #b6c8ff; } }
+
+/* ---------------------------------------------------------------- card */
+.tut-card {
+  position: fixed; left: 0; top: 0; width: 360px; max-height: calc(100vh - 28px); overflow-y: auto;
+  pointer-events: auto;
+  background: rgba(21, 23, 29, .97); border: 1px solid var(--line-2); border-radius: 14px;
+  box-shadow: 0 24px 70px #000b, 0 0 0 1px #ffffff08 inset;
+  padding: 12px 16px 14px;
+  transition: transform .28s cubic-bezier(.2, .8, .2, 1);
+}
+.tut-card.center { width: 440px; }
+.tut-card.enter { animation: tutIn .25s ease; }
+@keyframes tutIn { from { opacity: 0; } }
+
+.tut-head { display: flex; align-items: center; gap: 4px; cursor: grab; user-select: none; touch-action: none; margin: -12px -16px 0; padding: 12px 16px 0; }
+.tut-card.dragging { transition: none; box-shadow: 0 30px 90px #000d, 0 0 0 1px rgba(124, 156, 255, .35) inset; }
+.tut-card.dragging .tut-head { cursor: grabbing; }
+.tut-card.moved .tut-crumb::after { content: ' · déplacée'; color: var(--faint); font-size: 10.5px; }
+.tut-crumb { flex: 1; font-size: 11px; color: var(--muted); letter-spacing: .01em; }
+.tut-crumb b { color: #d5c2ff; font-weight: 600; }
+.tut-crumb span { font: 10.5px var(--mono); color: var(--faint); margin-left: 4px; }
+.tut-x { width: 24px; height: 24px; border-radius: 6px; border: 0; background: transparent; color: var(--muted); cursor: pointer; font-size: 13px; }
+.tut-x:hover { background: var(--panel-2); color: var(--text); }
+
+.tut-bar { height: 3px; border-radius: 3px; background: #262a34; margin: 8px 0 10px; overflow: hidden; }
+.tut-bar i { display: block; height: 100%; background: linear-gradient(90deg, #6d8dff, #b48cff); transition: width .3s; }
+
+.tut-title { margin: 0 0 6px; font-size: 15.5px; font-weight: 650; letter-spacing: -.005em; }
+.tut-body { color: #c9cdd8; font-size: 12.8px; }
+.tut-body p { margin: 0 0 8px; }
+.tut-body b { color: var(--text); }
+.tut-body i { color: #dfe2ea; }
+.tut-note { color: var(--muted); font-size: 12px; }
+.tut-steps, .tut-list { margin: 4px 0 10px; padding-left: 18px; }
+.tut-steps li, .tut-list li { margin: 3px 0; }
+.tut-ok { color: var(--good); font-weight: 600; }
+.tut-bad { color: var(--bad); font-weight: 600; margin-bottom: 2px !important; }
+.tut-kbd { font: 10.5px var(--mono); color: #c9cdd8; border: 1px solid var(--line-2); border-bottom-width: 2px; padding: 0 5px; border-radius: 5px; background: #1f232c; white-space: nowrap; }
+
+.tut-task {
+  display: flex; gap: 9px; align-items: flex-start; margin: 10px 0 0;
+  padding: 9px 11px; border-radius: 10px;
+  background: rgba(124, 156, 255, .09); border: 1px solid rgba(124, 156, 255, .28);
+  font-weight: 550; color: #e3e8ff;
+}
+.tut-check { flex: none; width: 16px; height: 16px; margin-top: 1px; border-radius: 50%; border: 2px solid rgba(124, 156, 255, .7); position: relative; animation: tutWait 1.4s ease-in-out infinite; }
+@keyframes tutWait { 50% { border-color: rgba(124, 156, 255, .25); } }
+.tut-task.ok { background: rgba(94, 224, 160, .09); border-color: rgba(94, 224, 160, .35); color: #d9f7e8; }
+.tut-task.ok .tut-check { border-color: var(--good); background: var(--good); animation: tutPop .3s ease; }
+.tut-task.ok .tut-check::after { content: ''; position: absolute; left: 4px; top: 1px; width: 4px; height: 8px; border: solid #0d0e12; border-width: 0 2px 2px 0; transform: rotate(45deg); }
+@keyframes tutPop { 50% { transform: scale(1.3); } }
+
+.tut-hint { margin-top: 7px; font-size: 12px; color: var(--warn); }
+.tut-success { margin-top: 8px; font-size: 12.3px; color: #b9c0d0; padding-left: 10px; border-left: 2px solid var(--good); }
+
+.tut-nav { display: flex; align-items: center; gap: 6px; margin-top: 12px; flex-wrap: wrap; }
+.tut-nav .grow { flex: 1; }
+.tut-nav .btn { height: 28px; font-size: 12px; }
+.tut-do { color: var(--muted); }
+.tut-do:hover { color: var(--text); }
+.tut-nav .btn.primary.pulse { animation: tutPulse 1.2s ease-in-out infinite; }
+@keyframes tutPulse { 50% { box-shadow: 0 0 0 5px rgba(124, 156, 255, .25); } }
+
+.tut-svg { width: 100%; height: auto; margin: 2px 0 8px; }
+.tut-svg .g { stroke: #3a4050; stroke-width: 1.5; }
+.tut-svg .s { fill: none; stroke: #8b91a1; stroke-width: 3; stroke-linejoin: round; }
+.tut-svg .b { fill: #ff8fa3; }
+.tut-svg .a { fill: none; stroke: #ff8fa3; stroke-width: 1.2; stroke-dasharray: 3 3; }
+.tut-svg .d { fill: #82c7ff; }
+.tut-svg .p { fill: #ffc36b; }
+.tut-svg text { fill: var(--muted); font: 10px Inter, sans-serif; }
+
+/* ---------------------------------------------------------------- reduced */
+.tut-pill {
+  position: fixed; right: 18px; bottom: 110px; pointer-events: auto;
+  height: 32px; padding: 0 14px; border-radius: 99px; cursor: pointer;
+  background: linear-gradient(135deg, #6d8dff, #a37bff); color: #fff; border: 0;
+  font: 600 12px Inter, sans-serif; box-shadow: 0 10px 30px #0008;
+  max-width: 340px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+
+/* ---------------------------------------------------------------- markers */
+.tut-marks { position: fixed; inset: 0; pointer-events: none; overflow: hidden; }
+.tut-mark { position: absolute; left: 0; top: 0; width: 0; height: 0; }
+.tut-mark i {
+  position: absolute; left: -11px; top: -11px; width: 22px; height: 22px; border-radius: 50%;
+  border: 2px solid #ffd36b; background: rgba(255, 211, 107, .18);
+  box-shadow: 0 0 12px rgba(255, 211, 107, .6);
+  animation: tutMark 1.4s ease-out infinite;
+}
+.tut-mark i::after { content: ''; position: absolute; left: 7px; top: 7px; width: 4px; height: 4px; border-radius: 50%; background: #ffd36b; }
+@keyframes tutMark { 0% { transform: scale(.7); } 70% { transform: scale(1.15); opacity: 1; } 100% { transform: scale(1.3); opacity: .4; } }
+.tut-mark span {
+  position: absolute; left: 14px; top: -30px; white-space: nowrap;
+  font: 600 11px Inter, sans-serif; color: #1a1406; background: #ffd36b;
+  padding: 2px 7px; border-radius: 6px; box-shadow: 0 4px 14px #0008;
+}
+
+/* ---------------------------------------------------------------- top bar entry */
+.btn.tuto { border-color: rgba(94, 224, 160, .45); color: #bff3d9; background: rgba(94, 224, 160, .08); }
+.btn.tuto:hover { background: rgba(94, 224, 160, .16); border-color: var(--good); color: #fff; }
+.tut-invite {
+  position: fixed; z-index: 44; width: 290px; padding: 14px 16px;
+  background: rgba(21, 23, 29, .97); border: 1px solid rgba(94, 224, 160, .4); border-radius: 12px;
+  box-shadow: 0 20px 60px #000b; font-size: 12.8px; color: #c9cdd8; animation: tutIn .3s ease;
+}
+.tut-invite::before { content: ''; position: absolute; top: -7px; left: 26px; width: 12px; height: 12px; background: inherit; border-left: 1px solid rgba(94, 224, 160, .4); border-top: 1px solid rgba(94, 224, 160, .4); transform: rotate(45deg); }
+.tut-invite b { color: var(--text); display: block; font-size: 14px; margin-bottom: 4px; }
+.tut-invite .row { display: flex; justify-content: flex-end; gap: 6px; margin-top: 10px; }

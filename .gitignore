@@ -1,0 +1,4 @@
+node_modules
+dist
+.debug
+.DS_Store
