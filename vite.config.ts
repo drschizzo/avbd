@@ -25,6 +25,8 @@ function debugCaptures(): Plugin {
 }
 
 export default defineConfig({
+  // GitHub Pages serves the app under /<repository>/ (set by the deploy workflow)
+  base: process.env.BASE_PATH ?? '/',
   plugins: [debugCaptures()],
   worker: { format: 'es' },
   build: { target: 'es2022' },
