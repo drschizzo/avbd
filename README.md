@@ -1,251 +1,231 @@
-# Loop Lab — satisfying physics loops with AVBD on WebGPU
+# Loop Lab
 
-Build a scene (or a chain-reaction machine), bake up to 30 seconds of **Augmented Vertex Block Descent** rigid-body
-physics on the GPU, and export a **seamless looping MP4**.
+Loop Lab is a browser application for building physics scenes and chain-reaction machines, simulating them on the
+GPU with **Augmented Vertex Block Descent** (AVBD) and exporting them as **seamless looping MP4** clips of up to
+30 seconds. It also includes an MLS-MPM liquid solver, an interactive course on how a physics engine works and a
+guided tutorial of the editor.
+
+**Live version: [drschizzo.github.io/avbd](https://drschizzo.github.io/avbd/)** (requires a WebGPU browser).
+
+![Editor: the Catapult Machine preset during playback, with the machine check of the last bake](docs/editor-machine.jpg)
+
+![Paddle Wheel preset: rigid bodies coupled with an MLS-MPM liquid, Look tab](docs/liquid-look.jpg)
+
+## Getting started
+
+Requirements: Node.js and a WebGPU browser (a recent desktop Chrome or Edge with hardware acceleration).
 
 ```bash
 npm install
-npm run dev
+npm run dev            # development server
+npm run build          # type check + production build
+npm test               # unit tests (Vitest)
+npm run check:unused   # unused locals, outside the vendored engine
 ```
 
-Requires a WebGPU browser (recent Chrome / Edge on desktop).
+Every push to `main` runs the tests, builds the app and publishes it to GitHub Pages
+(`.github/workflows/pages.yml`). The build reads its base path from `BASE_PATH` (`/` by default).
 
-## What's inside
+## Features
 
-| Layer | What it does |
+### Scene editor
+
+- **Parts palette**: primitives (box, sphere), structures (brick wall, pyramid, tower, dominoes, block grid),
+  mechanisms (chain / bridge, wrecking ball, hourglass, paddle wheel, tumbler drum, pendulum wave), scenery
+  (container, funnel, Galton board, stairs, peg field), sources (emitter), liquids (water block, water source),
+  gadgets and test sensors.
+- **Inspector** with five tabs: *Object* (parameters, look, physics, kinematic motion), *Machine* (diagnosis of
+  the last bake), *Scene* (clip, loop transition, solver and liquid settings), *Look* (palette, light,
+  post-processing) and *Camera* (exported shot and its motion).
+- **Gizmo** combining move handles and rotation rings (Q / W / E, Shift snaps), click picking in edit and
+  playback modes, undo / redo, autosave in local storage, JSON open / save and share links.
+- **Baking**: the scene is simulated at a fixed step after each physics edit (auto-bake) and playback starts
+  while frames are still being computed.
+- **22 presets**, from single effects (Pyramid Topple, Cube Rain, Shattered Wall, Rope Bridge, Galton Board,
+  Hourglass Flip, Pendulum Wave…) to liquids (Dam Break, Fill & Drain, Paddle Wheel, Cannonball) and complete
+  machines (Catapult Machine, Marble Run, Grand Machine, and the empty Machine Workshop).
+
+### Chain-reaction machines
+
+| Tool | Usage |
 | --- | --- |
-| `src/engine/` | GPU AVBD solver from [jure/webphysics](https://github.com/jure/webphysics) (MIT), vendored and extended (see below) |
-| `src/sim/baker.ts` | Fixed-step bake; every frame is recorded **on the GPU** into a compact history buffer (16 B per body per frame: float32 position + 10:10:10:2 "smallest three" quaternion). No readback, ever. |
-| `src/sim/baker.ts` (pacing) | While the page is visible the bake runs in slices, one per rendered frame (preview capped at 60 fps while baking, ≤ 2 slices queued on the GPU), sized by AIMD on the frame interval: the preview streams fluidly and the bake takes the remaining GPU time. Hidden pages fall back to throughput batching. |
-| `src/sim/batchedCompute.ts` | Collapses the ~200–350 compute dispatches per frame into one command buffer (uniform/attribute uploads replayed in order through a staging ring). |
-| `src/render/bodies.ts` | One instanced draw per shape. The vertex shader fetches poses from the history, interpolates frames, applies loop transitions and rebuilds rounded boxes with a constant bevel for any size. |
-| `src/render/stage.ts` | WebGPU renderer, custom studio environment, VSM soft shadows, GTAO, bloom, depth of field, vignette/grain, MSAA/SMAA/FXAA. |
-| `src/scene/` | Scene document, entity catalogue (schemas drive the UI), builder, palettes, presets. |
-| `src/export/video.ts` | Offline, frame-exact export: supersampled render → WebCodecs H.264 → MP4. |
+| **Drop-in placement** | A palette tile, a paste or a saved gadget follows the cursor and rests on the surface under it. Click drops it, ⇧ snaps to a 0.25 m grid, right-click / Esc cancels. |
+| **✎ Draw** (D) | Drag in the viewport to draw a path filled with a **domino run**, a **marble row**, a **block row**, a **rail** (floor and side walls), a **track** (flat strip) or a **guide wall**. Blue dots are control points (Del removes one); *Reshape* replaces the path with a line, arc, S-curve, zigzag, circle or helix. |
+| **Work plane** (P) | XY / ZY / XZ: drawing and placing land on the plane and the gizmo stays on it. `[` `]` move it by 0.25 m, ⊡ faces it. |
+| **Selection and groups** | ⇧-click adds or removes, ⌘A selects all, ⌘G / ⇧⌘G group and ungroup; ⌥-click selects one member of a group. |
+| **Copy / paste** | ⌘C / ⌘X / ⌘V (the clipboard is kept across scenes), ⌘D duplicates, *Repeat…* creates a row or a ring of copies. |
+| **Ports** | Orange rings at the ends of ramps, rails, rollers and cups: moved parts snap end to end (⌥ moves freely). |
+| **⤓ Drop** (End) / **⌖** (F) | Lower the selection onto the surface below / frame it in the free camera. |
+| **My gadgets** | *Save as gadget…* stores the selection in the palette. |
 
-### Liquids (MLS-MPM)
+Gadgets: **Seesaw** (also a catapult), **Ramp**, **Hammer** (hinged pendulum, optionally held by a timed catch),
+**Free wheel**, **Piston** (kinematic pusher, used to start a machine at a given time), **Cup**, **Rollers**
+(powered conveyor), **Sensor** (test zone, invisible in the render). The **Wrecking ball** can start *latched* on a
+bar resting on a loose prop, so the machine itself releases it. Hinges are made of two spherical joints, as the
+engine has no revolute joint.
 
-`src/fluid/` adds a GPU liquid next to the AVBD rigid bodies (raw WGSL on the same device):
+**Machine tab** (`src/sim/analysis.ts`). After each bake the recorded poses are sampled (about 30 per second) and
+every object is judged: when it was first set in motion (moved by a quarter of its size or turned by 20°), whether a
+row fell to its last piece (a red ring marks where it stopped), when each sensor was reached, and when the last
+motion ended compared with the start of the loop transition. Objects marked ○ are decor. *Test ×5* bakes the
+machine five times with sub-millimetre perturbations and reports how often each step succeeds; *Bake until it
+works* keeps the first fully successful run; *Solo* bakes only the selection.
 
-| File | What it does |
-| --- | --- |
-| `fluidBuild.ts` | Seeds particles (8 per grid cell) from *Water block* and *Water source* entities, sorted by spawn frame, and fits the simulation box. |
-| `fluidSolver.ts` | MLS-MPM: P2G (APIC momentum), P2G (Tait pressure + viscosity), grid update, G2P, with fixed-point atomics. Scenery is rasterised once into a nearest-collider map; moving bodies are re-rasterised every frame straight from the engine buffers. Dynamic bodies receive the momentum the liquid loses against them **every substep** (two-way coupling: floating, sinking, being swept away). |
-| `fluidRender.ts` | Screen-space surface: sphere impostors → view depth, additive thickness, bilateral depth smoothing, normals from depth, refraction + Beer–Lambert absorption + Fresnel reflection + studio highlights, and a sphere proxy on a shadow-only layer. |
-
-The liquid history is 8 bytes per particle per frame (16-bit position in the box, speed, alive bit), allocated
-directly on the GPU and adopted by three.js (no CPU mirror). Liquid follows the loop transitions (rewind, shrink;
-`sink` opens the floor so the water drains). *Settle pre-roll* (Scene → Liquid) relaxes resting pools before frame 0.
-
-Lessons that cost time: boundary conditions must cover the grid nodes that drive the particles resting on a wall,
-or they pancake into it (~20 % volume loss and jets climbing the walls); a one-node collider map leaks at corners
-unless push-out looks at the 8 surrounding nodes; coupling impulses must update the collider velocity between
-substeps or heavy bodies bounce off the surface.
-
-### Interactive course — « Anatomie d'un moteur physique »
-
-The **? Comment ça marche** button in the top bar replaces the editor with a
-~26-minute guided course (in French) on how a physics engine works, built the
-same way as the raymarching course in the sibling `shader2` project.
-
-| Piece | What it does |
-| --- | --- |
-| `src/course/tour.ts` | The content: 33 chapters in 5 modules, 93 captions, 10 prediction questions, 11 hands-on pauses with measurable missions. One timeline, so the learner can scrub anywhere. Captions carry code with **draggable values** (`{{key\|min\|max\|step}}`). |
-| `src/course/mini.ts` | A **2D rigid-body engine written for the course**: the same scene can be run with no solver, with sequential impulses (PGS), with a plain penalty (VBD) or with the full AVBD (λ + rising β). It is the only way to show what happens *inside* one time step. `trace` records every iteration. |
-| `src/course/diagrams*.ts` | 30 animated canvas diagrams. The solver ones do not illustrate an idea — they run `mini.ts` and plot what actually came out (convergence curves, residual penetration against stiffness, λ and k per iteration). |
-| `src/course/simcache.ts` | Those plots are a dozen simulations each, so they are recorded once and replayed, with a per-frame budget so the page never stalls while a curve fills in. |
-| `src/course/scenes.ts` | 16 short 3D scenes (5 s at 30 fps) run by the **real GPU engine**. Changing a solver setting in a mission re-bakes the scene in a fraction of a second. |
-| `src/course/lab.ts` | The workshop: 8 challenges where the learner writes a piece of the engine in JavaScript (the integrator, the inertial prediction, a constraint value, the one-sided contact force, the dual update, the Coulomb cone, the velocity update, graph colouring). Each one is plugged into a readable solver and compared frame by frame against the reference. |
-| `src/course/mini.selftest.ts` | `courseSelfTest()` in the dev console: 8 physics assertions on the 2D engine plus a check that every challenge accepts its solution and rejects its starter. |
-
-Things that cost time here, and are worth knowing:
-
-- The two engines use **the same letters for different quantities**: the mini
-  engine's `beta` is a penalty *growth factor* (≈ 5), the GPU engine's is a
-  penalty *value* (≈ 1e4). `DOC_KEYS` in `tour.ts` deliberately lists only the
-  parameters that mean the same thing in both; writing β across destroyed every
-  3D scene before that was caught.
-- AVBD's dual update must run **after every sweep**, not once per substep: with
-  one update per substep a hard impact keeps most of its penetration and gives
-  it back as a bounce (a ball dropped from 2 m hopped 10 cm with restitution 0).
-  It then needs a dead band, or extra iterations keep pumping λ until it throws
-  the body into the air.
-- The penalty ceiling matters more than its growth rate: above roughly 30 × M/h²
-  the block descent stops converging. For the course's units that is `kMax = 1e5`
-  — the same wall the GPU engine hits at β = 1e6 in float32.
-- Class names are shared with the editor's stylesheet (`.left`, `.right`,
-  `.top`, `.seg`, `.time`), and `body.course-on` hides several of them. Course
-  elements are prefixed; the quiz verdicts use `is-right` / `is-wrong` because
-  `.right` made the correct answer invisible.
-- `App.persist` is switched off while the course runs, so its scenes do not
-  replace the user's saved document nor appear in their undo history.
-
-### Guided tutorial — « ▶ Tutoriel »
-
-Next to the course, a hands-on tour of the editor itself (in French, ~15 min),
-opened by **▶ Tutoriel** in the top bar and offered once on the first visit.
-Unlike the course it does not take over the window: the editor stays fully
-live, and a floating card points at the part of the interface it talks about.
-
-- **Part 1 — the interface** (10 steps) on the *Catapult Machine* preset:
-  presets, bake, playback and scrubbing, Shot / Free camera, selection, the
-  Object tab, the gizmo and undo, the Machine tab, the other tabs.
-- **Part 2 — build a machine** (18 steps) on *Machine Workshop*: a ramp, a ball
-  set to the right size and density, a domino run drawn with ✎ Draw, a pyramid,
-  then the bake, the Machine diagnosis, Test ×5, clip length and loop, palette,
-  camera motion, export.
-
-| File | Role |
-|---|---|
-| `src/tutorial/steps.ts` | The content. Each step names its target (`data-tut` attributes in `ui.ts`), the task, a `done()` test read from the app state, hints, and a « Faire pour moi » action. Points of the scene (where to drop the ramp, A → B for the dominoes…) are computed from what the learner actually built. |
-| `src/tutorial/index.ts` | The card, the spotlight and the 3D markers; picks a spot for the card that hides neither the target, the markers nor the selected object. Saves the step; on leaving, offers to bring back the scene the learner had before. Dev console: `tutorial.go(i)`, `tutorial.list()`. |
-
-The reference machine was tuned in the real engine: the pyramid needs
-`density ≈ 0.3` (at 1 the last domino only comes to lean on it) and its near end
-≈ 0.3 × domino height past the last domino. `App.holdEdit` keeps the editor in
-edit mode after a bake while the learner places parts.
+**Follow camera** (`src/sim/follow.ts`). The camera motion *follow* uses the machine check samples to track where
+things move: each object pulls the camera with a weight based on its squared speed and on how recently it started,
+the path is smoothed and looks slightly ahead. It keeps the angle of the shot camera and never goes farther than the
+wide shot. *Camera follows* (Object tab) excludes an object.
 
 ### Seamless loops
 
-The clip must end exactly where it starts. Each scene picks a transition:
+The last frame of a clip must match the first. Each scene selects a transition:
 
-- **reassemble** – initial bodies fly back to their starting pose (staggered, with an arc); spawned bodies pop out.
-- **shrink** – everything pops out at the end and grows back in at the start.
-- **sink** – the ground becomes permeable and everything sinks through the floor.
-- **boomerang** – the clip plays forward at true speed, slows into the apex (*Apex slow-down*, s), then
-  rewinds, accelerating up to *Rewind speed* × the forward speed and landing softly on frame 0. Only the
-  forward span is simulated (`src/sim/loopTime.ts`), so a fast rewind leaves more of the clip to real physics.
-  Best for destruction: the way back is the collapse played backwards, so nothing cuts through anything.
-- **continuous** – for steady processes (a drum, a mixer, a stream, an hourglass). The clip is simulated
-  twice: a warm-up take from the scene as built, then the recorded take starting exactly where the warm-up
-  ended (periodic kinematics are back at their t = 0 pose). Both takes end at the same moment of the
-  cycle, so the last `outro` seconds of the warm-up are kept (`BakeResult.tail`) and each body glides from
-  its own trajectory onto the warm-up trajectory of an **interchangeable twin** (same shape, size, finish;
-  `src/sim/loopMatch.ts`): at the seam, frame D shows body *i* where frame 0 shows its twin — the same
-  picture. Twins are paired by a greedy + pairwise-swap assignment on the positions halfway through and at
-  the end of the blend; boxes also take the box symmetry (up to 24) closest to their attitude, spheres keep
-  their spin. A twin of another colour may be used when it spares a trip of a couple of body sizes (the
-  colour cross-fades), and a twin too far to glide to is reached by a hop (shrink, pop up there).
-  Emitters are recycled: spawned bodies exist from the start, parked far below, and each spawn teleports
-  its body to the emitter — so a stream is already flowing at frame 0. Bake time doubles.
-  Design tips: put the seam where the process is calm (the hourglass seam is the sand at rest before the
-  turn), use few colour classes, and keep everything in play (a lid on the mixer).
+- **reassemble**: bodies return to their initial pose (staggered, along an arc); spawned bodies disappear.
+- **shrink**: everything shrinks out at the end and grows back at the start.
+- **sink**: the ground becomes permeable and everything sinks through the floor.
+- **boomerang**: the clip plays forward at real speed, slows down into an apex, then rewinds faster (*Rewind
+  speed*) and lands on frame 0. Only the forward part is simulated (`src/sim/loopTime.ts`). Suited to destruction
+  scenes.
+- **continuous**: for steady processes (drum, mixer, stream, hourglass). The clip is simulated twice: a warm-up
+  pass, then the recorded pass starting where the warm-up ended. During the last `outro` seconds each body blends
+  onto the trajectory of an interchangeable twin from the warm-up (same shape, size and finish;
+  `src/sim/loopMatch.ts`), so the final frame shows the same picture as frame 0. Emitted bodies are recycled.
+  Baking takes twice as long.
+- **none**: for purely kinematic scenes that are already periodic, such as the Pendulum Wave.
 
-Purely kinematic scenes (the *Pendulum Wave*: pendulum *n* swings `cycles + n` times per loop, with the
-length real gravity gives that period) loop exactly with no transition (`none`).
+Kinematic motions (spin, swing, slide, gate) and camera motions are periodic over the clip.
 
-Kinematic motions (spin, swing, slide, gate) and camera moves are periodic over the clip
-(orbits always make whole turns). Entity builders can also give individual bodies their own
-kinematic motion (`LocalBody.motion`): the Galton gate, the Hourglass flip, the Tumbler drum and the
-Pendulum wave use it. The hourglass is symmetric under its 180° flip, so the turned glass at the end of
-the clip is indistinguishable from the upright one at the start.
+### Liquids
 
-### Building machines (chain reactions)
+`src/fluid/` runs an MLS-MPM liquid on the same GPU device as the rigid bodies:
 
-The editor is made for Rube Goldberg style machines: parts are placed, drawn and copied quickly, and every
-bake is checked step by step.
-
-| Tool | How |
+| File | Role |
 | --- | --- |
-| **Drop-in placement** | A palette tile (or a paste, or a saved gadget) follows the cursor over the scene and sits on whatever is under it: floor, a shelf, the side of a box. Click drops it, ⇧ snaps to a 0.25 m grid, right-click / Esc cancels. |
-| **✎ Draw** (D) | Drag in the viewport to draw a path, then pick what it holds: a **domino run**, a **marble row**, a **block row**, or a track — **rail** (floor + side walls), **track** (flat strip) or **guide wall**. Rows stand on what they were drawn on; a rail drawn flat on the floor gets a gentle 6° fall (*Drop*). Blue dots are control points (click one, move it with the arrows, Del removes it); *Reshape* swaps in a line, arc, S-curve, zigzag, circle or helix. |
-| **Work plane** (P) | XY / ZY / XZ: drawing and placing land on the plane, the gizmo keeps to it, a grid shows it. `[` `]` move it by 0.25 m, ⊡ looks at it square on. Build a machine as a vertical slice, then add depth. |
-| **Selection** | ⇧-click adds or removes, ⌘A selects all. The gizmo moves and turns everything selected about its centre. **Groups** (⌘G / ⇧⌘G): clicking a part selects its group, ⌥-click a single part. |
-| **Copy / paste** | ⌘C / ⌘X / ⌘V (works across scenes: the clipboard is kept in local storage), ⌘D duplicates, *Repeat…* makes a row or a ring of copies. |
-| **Ports** | Orange rings at the ends of ramps, rails, rollers and cups: moved parts snap end to end (⌥ moves freely), and a drawn track starts and ends on a nearby port. |
-| **⤓ Drop** (End) | Lowers the selection onto the surface below; on a drawn path, every point. **⌖** (F) frames the selection in the free camera. |
-| **My gadgets** | *Save as gadget…* stores the selection in the palette (local storage); placing it again makes a new group. |
+| `fluidBuild.ts` | Seeds particles (8 per grid cell) from *Water block* and *Water source* entities and fits the simulation box. |
+| `fluidSolver.ts` | MLS-MPM in raw WGSL (APIC transfer, Tait pressure, viscosity, fixed-point atomics). Static scenery is rasterised once into a collider map, moving bodies every frame. Two-way coupling: dynamic bodies receive the momentum the liquid loses against them every substep, so they float, sink or get carried away. |
+| `fluidRender.ts` | Screen-space surface: sphere impostors, thickness, bilateral depth smoothing, refraction, Beer–Lambert absorption, Fresnel reflection, plus a proxy for shadows. |
 
-Gadgets (`src/scene/gadgets.ts`): **Seesaw** (a catapult when loaded, can rest on the floor), **Ramp**, **Hammer**
-(a hinged pendulum, optionally held by a catch that pulls away at *Release at*), **Free wheel** (paddles hinged on an
-axle), **Piston** (a kinematic pusher: the reliable way to start a machine at a given time), **Cup** (static target,
-loose box, or hanging and tipping), **Rollers** (a powered conveyor of spinning balls, rounded to whole turns per
-loop), **Sensor** (a test zone, invisible in the render). Hinges are two spherical joints on the axis: the engine has
-no revolute joint.
-The **Wrecking ball** can also start *latched*: a level rigid rod, the ball resting on a bar whose near end stands
-on a thin loose prop. The load is purely vertical so it holds indefinitely; topple the prop (a domino, a giant) and
-the ball swings: a release set off by the machine itself rather than by a timer.
+The liquid history uses 8 bytes per particle per frame and stays on the GPU. Liquids follow the loop transitions;
+*Settle pre-roll* (Scene → Liquid) relaxes resting pools before frame 0.
 
-**Machine tab** (`src/sim/analysis.ts`): after every bake the history is read back (≈ 30 samples/s, ≤ 48 MB) and
-each object is judged: when it was first set in motion (moved by a quarter of its size or turned by 20°), whether a
-row fell to its last piece (a red ring marks the first piece that never moved, a red mark on the timeline when), when
-each sensor zone was reached, when the last thing stopped moving (windowed: 3 cm or 9° in half a second, so slow creep
-does not count) and whether that is before the loop transition. Objects marked ○ are decor and not required to move.
-*Test ×5* bakes the machine five times, each nudged by < 1 mm (plus the GPU's own run-to-run differences: the solver
-is not bitwise deterministic) and shows how often each step held; *Bake until it works* stops at the first run where
-everything held and keeps it for export. *Solo* bakes only the selection, to tune one part alone. Selected objects
-show their trajectories.
+### Export
 
-Lessons that cost time:
+`src/export/video.ts` renders the baked simulation offline, frame by frame, with optional 2× supersampling, and
+encodes it to H.264 MP4 with WebCodecs. Resolution, frame rate, bitrate and number of repetitions are configurable.
+The top bar also offers a PNG snapshot.
 
-- Contacts are inelastic, so a rail made of short boxes must never present a step **up** at a seam: each piece laps
-  forward over the next one only and sits a hair lower. A marble on a curved rail still settles to a terminal speed
-  (it rides the outer wall), so a spiral takes ~1.5 m/s: plan the clip length for it.
-- A domino run cannot push a heavy body: a small domino leaning on a 20× heavier block just rests on it, and one
-  pressing down on a heavy ball pins it. Amplify in steps (≈ 1.3× bigger, ≤ 3× heavier each).
-- A catapult throws with ±10 % spread run to run; catch with a backboard over a wide basket rather than aiming.
-  Keep the catch inside the basket's envelope, though: a wider funnel clipped the ball on its way *up*.
-- Amplifying dominoes: ≈ 2× heavier per step is safe. At 3× and more the lighter one leans on the heavier,
-  its foot slides forward and it ends up lying *under* it.
-- A domino row is laid every step from its start, so it can stop up to a step short of its drawn end: place what
-  it must hit from the last domino actually built (`buildPath`), not from the path's end point.
-- A loose prop pushed along the bar it supports topples *under* the bar and keeps holding it; a near-frictionless
-  bar slides away by itself within seconds (solver noise) and, once free, skates across the floor.
+### Course: « Anatomie d'un moteur physique »
 
-**Follow camera** (`src/sim/follow.ts`, camera motion *follow*): after each bake the machine check's sampled
-poses (~30/s) tell where things move. Each object pulls the camera toward its moving bodies, weighted by its squared
-speed and by novelty (what has just set off counts more than what has been moving for a while), smoothed over time
-with activity weights (quiet moments hold the last shot) and looked at slightly ahead (*Look ahead*). The shot keeps
-the angle of the *Position → Target* camera but comes as close as *Closeness* allows, backing off when the action
-spreads, never farther than the wide shot. The camera reads the simulated time, so a boomerang's rewind brings it
-back along its path; other loops glide back to the first shot. *Camera follows* (Object tab) leaves an object out
-(the Grand Machine's hourglass).
+The **? Comment ça marche** button opens a guided course (in French, about 25 minutes) on how a physics engine
+works. It combines narration with draggable values in code, prediction questions, hands-on pauses with missions and
+a workshop of coding challenges.
 
-**Grand Machine** (`grandMachine()` in `src/scene/machines.ts`) chains nearly all of this into one 24 s run: a
-hammer taps a marble down a spiral column, a growing domino row fires the catapult into a funnel, a rail carries the
-ball to a roller conveyor under a bead curtain, a free wheel and a ramp set it on the floor, and a fork splits the
-last row into a domino spiral and a giant cascade that unlatches a wrecking ball into a ring tower. It holds 5/5 on
-*Test ×5*; the hourglass is the only part not on the chain (it turns with the start, as a clock).
+| File | Role |
+| --- | --- |
+| `src/course/tour.ts` | Course content on a single timeline, organised in modules and chapters. |
+| `src/course/mini.ts` | A 2D rigid-body engine that runs the same scene with no solver, sequential impulses (PGS), a plain penalty (VBD) or full AVBD, and records every iteration. |
+| `src/course/diagrams*.ts` | Animated canvas diagrams; those about the solver plot the output of `mini.ts`. |
+| `src/course/simcache.ts` | Records the diagram simulations once and replays them within a per-frame budget. |
+| `src/course/scenes.ts` | Short 3D scenes simulated by the GPU engine; changing a solver setting re-bakes them. |
+| `src/course/lab.ts` | Challenges where the learner writes a part of the engine in JavaScript, compared frame by frame with a reference. |
 
-### Engine changes (vs. upstream webphysics)
+The two engines use some names for different quantities (the mini engine's `beta` is a penalty growth factor, the
+GPU engine's a penalty value). `DOC_KEYS` in `tour.ts` lists the parameters that mean the same thing in both.
 
-- Kinematic bodies: static bodies advance along a prescribed velocity, so contacts carry them correctly (paddles, gates, sweepers).
-- Breakable joints (`fracture` force threshold, stored in the joint stiffness record).
-- Fixed joints keep the relative orientation the two bodies had when the joint was made (upstream recorded it but the
-  angular constraint drove the bodies to *equal* orientations, which folded any ring of turned parts such as a wheel).
-- `stepFixed()` for deterministic baking, `setGravity()`, `dispose()`.
-- Bug fix: brute-force pair decoding dropped pairs `(0, j)` when `sqrt` rounded down (Metal), letting bodies fall through the ground.
-- Bug fix: `clearScene()` zeroed its buffers on the CPU but the upload could leave the previous scene on the
-  GPU: once an attribute has update ranges three.js writes only those, and the next scene adds some at once
-  (each joint flags its pair as non-colliding). Stale "ignored pair" bits then let unrelated bodies of the
-  next bake pass through each other (dominoes slipping under the next one, a marble through a row) - only
-  after a scene with joints had been baked in the same session. The cleared buffers are now uploaded whole.
-- **Body solve performance (~6–15× faster bakes):**
-  - the local 6×6 system is accumulated and solved as 3×3 blocks (`mat3x3f`, Schur complement) instead of dynamically indexed `array<array<f32, 6>, 6>`, which Tint's loop guards push to stack memory on Metal;
-  - *wide* solve: one 32-lane workgroup per body, constraints spread over the lanes and reduced in shared memory (one thread per body walked 40 contacts serially, latency bound); the commit is fused in place (`AvbdStateStage.wideBodySolve`, set it to `false` for the original Jacobi solve + commit path);
-  - one solve kernel instance per color, so no uniform changes between dispatches (each one split the compute pass);
-  - local-diagonal inertia variant by default: the generic one refreshed the derived world inertia every iteration, from quaternions that do not change within a substep, and then only used its local diagonal.
+### Guided tutorial
 
-- **Rolling spheres sank through floors** (Galton beads vanished): contact arms were rotated with the
-  body during the solve, so a fast-rolling sphere's arm tilted off the normal and the linearised
-  constraint reported ~r·θ² of false separation per frame. Contact generation now flags sphere sides
-  (`armB.w`) and the solver keeps their arm world-fixed along the normal (`±n·r`).
-- Air drag (`setDrag`, `physics.drag`): implicit linear/angular velocity damping in the velocity
-  finalize pass. The Galton board uses it as a viscous board: without it, inelastic frictionless
-  contacts let beads keep their sideways momentum along the lattice diagonals and the histogram
-  comes out flat instead of binomial.
+The **▶ Tutoriel** button (offered on the first visit) opens a guided tour of the editor (in French, about
+15 minutes). The editor stays live while a floating card points at the relevant part of the interface. Part 1
+presents the interface on the *Catapult Machine* preset; part 2 builds a small machine (ramp, ball, drawn domino run,
+pyramid) on *Machine Workshop*, then covers diagnosis, loop settings and export.
 
-Rendering fixes:
+| File | Role |
+| --- | --- |
+| `src/tutorial/steps.ts` | Steps: target element (`data-tut` attributes), task, completion test read from the app state, hints and a « Faire pour moi » action. |
+| `src/tutorial/index.ts` | Card, spotlight and 3D markers; saves progress and offers to restore the previous scene on exit. |
 
-- Body materials include the history/edit buffer identities in their program cache key. three.js
-  caches node programs (and their bindings) by graph structure only, so after a re-bake with the same
-  body layout the playback kept reading the *previous* bake's buffer.
-- Offscreen captures (`Stage.renderOffscreen`) advance three's node frame before rendering: pass nodes
-  render once per frame id, which only advances in the rAF loop, so consecutive export frames between
-  two ticks (or any capture in a hidden tab) reused the previous image.
-- Bakes in a hidden tab batch more work per yield (GPU completion callbacks are throttled to ~180 ms).
+## Architecture
 
-Dev tools: `machine(key)` bakes a preset and summarises its machine check, `soloN(['prefix', ...])` solos entities by name, `traj3(name, nth, every)` samples a body's path, `view(name, pos, target, w, h, t?)` saves a frame from any camera to `.debug/`; `bench('pyramid')` / `benchAll([...])` in the console time steady-state steps, `loadTest('pyramid', paced?)` measures preview fps while a preset bakes (dev server only); `app.baker.batcher.profile = true` records per-kernel GPU timestamps into `app.baker.batcher.profileTotals`. `seam(key)` measures the visual jump across the loop point, `shots(key, times)` saves frames to `.debug/`, `hist(frame)` reads baked poses back, `evalPreset(key, times?)` bakes a preset and returns its seam metrics, `matchStats()` (continuous loops) reports how far bodies travel to their twins (p50/p90/p99, hops, colour swaps).
+Data flows in one direction: **`SceneDoc`** (plain serialisable document, `src/scene/doc.ts`) → **`buildScene()`**
+(pure function producing a flat list of bodies, joints and motions, `src/scene/build.ts`) → **`Baker`** (GPU
+simulation) → **`BakeResult`** → renderers, machine check and export. Everything before the GPU step is
+deterministic and covered by unit tests.
+
+| Module | Responsibility |
+| --- | --- |
+| `src/app.ts` | Composition root and command façade (`commit`, `select`, `bake`, `undo`…) used by the UI, the course and the tutorial. |
+| `src/core/` | `history` (undo by document snapshots), `persistence` (autosave, share links), `events` (typed `AppEvent`), `context` (settings layers that the course and tutorial push and pop). |
+| `src/scene/` | Document, entity catalogue, scene builder, paths, gadgets, palettes, presets, document migration. |
+| `src/sim/baker.ts` | Fixed-step bake recorded on the GPU into a history buffer of 16 bytes per body per frame (float32 position and a 10:10:10:2 quaternion), read directly by the vertex shaders. While the page is visible, the bake runs in slices paced on rendered frames so the preview stays fluid. |
+| `src/sim/bakeController.ts` | When to bake, streaming to the renderers, loop matching, machine check, robustness trials. |
+| `src/sim/bakePlan.ts`, `poseCodec.ts` | History memory plan; the pose format, with its CPU and WGSL implementations side by side. |
+| `src/sim/batchedCompute.ts` | Groups the compute dispatches of a frame into one command buffer. |
+| `src/render/` | `stage` (renderer, studio environment, soft shadows, GTAO, bloom, depth of field, anti-aliasing), `bodies` (one instanced draw per shape and material class, rounded boxes with a constant bevel), `shotCamera`, `threeInternals` (the only place that accesses three.js private state). |
+| `src/edit/` | `viewport` (gizmos, picking, overlays), `selection`, `tools` (placement, drawing, ports, clipboard, gadgets). |
+| `src/ui/` | `ui.ts` assembles the page from `inspector` and `tabs/*` (one module per tab), `leftPanel`, `overlays`, `timeline`, `dialogs` and `shortcuts`. |
+| `src/util/` | `storage` (every local storage key), `dom`, `num`. |
+
+**Adding a part** means adding one entry to `ENTITY_DEFS` (`src/scene/entities.ts` or `src/scene/gadgets.ts`): a
+parameter schema (which generates the Object tab), a builder in the part's local frame, and optional behaviours
+(`hang`, `marker`, `spawnsLate`, `chain`, `liquid`, `onParamChange`, `ports`). No other module depends on specific
+entity types. `test/entities.test.ts` checks that every entry builds finite bodies and valid joints.
+
+**Tests** (`test/`) include a golden master of the scene built from every preset and unit tests of the pure core:
+pose codec, boomerang time mapping, kinematic motions, document migration, machine check, history, selection,
+settings layers and the bake memory plan.
+
+## Physics engine
+
+`src/engine/` contains the GPU AVBD solver of [jure/webphysics](https://github.com/jure/webphysics) (MIT), with
+the following differences from upstream:
+
+- kinematic bodies that move along a prescribed velocity, so contacts carry other bodies correctly;
+- breakable joints (`fracture` force threshold);
+- fixed joints that keep the relative orientation the two bodies had when the joint was created;
+- `stepFixed()` for deterministic stepping, `setGravity()`, `setDrag()` (implicit linear and angular damping) and
+  `dispose()`;
+- sphere contact arms kept along the contact normal, so rolling spheres stay on surfaces;
+- brute-force pair decoding that is robust to `sqrt` rounding, and `clearScene()` uploading its cleared buffers in
+  full;
+- a body solve that accumulates the local 6×6 system as 3×3 blocks (Schur complement), runs one 32-lane workgroup
+  per body (`AvbdStateStage.wideBodySolve`), uses one kernel instance per graph colour and a local-diagonal inertia
+  variant.
+
+The solver is not bitwise deterministic from run to run (atomic accumulation order), which is why machines are
+evaluated with repeated trials.
+
+## Design notes
+
+Recommended settings and observations for building scenes with this engine:
+
+- Contacts need `beta` ≈ 1e4 and joints ≈ 1e5 with `alpha` 0.95; thin bodies need 4 substeps.
+- Contacts are inelastic. A rail made of short pieces must not present an upward step at a seam: each piece overlaps
+  the next one forward and sits slightly lower. A marble on a curved rail settles to about 1.5 m/s.
+- A domino cannot push a body much heavier than itself. Grow dominoes in steps of about 2× mass; at 3× or more the
+  lighter one slides under the heavier one.
+- A catapult varies by about ±10 % between runs: catch the projectile with a backboard and a wide basket.
+- A drawn domino row can end up to one spacing before the end of its path: place what it must hit from the last
+  domino built (`buildPath`).
+- For *continuous* loops, place the seam where the process is calm, use few colour classes and keep every body in
+  play.
+- The Galton board uses air drag (`physics.drag`) so that beads lose their sideways momentum and form a binomial
+  distribution.
+
+## Development
+
+In development builds the browser console exposes helpers, among them:
+
+- `app`, the application instance;
+- `machine(key)`, which bakes a preset and summarises its machine check;
+- `soloN([...])`, `traj3(name, nth, every)`, `hist(frame)`;
+- `bench(key)`, `benchAll([...])`, `loadTest(key, paced?)` for performance;
+- `seam(key)`, `evalPreset(key)`, `matchStats()` for loop quality;
+- `shots(key, times)`, `shot(name, t)`, `view(...)`, which save frames to `.debug/`;
+- `courseSelfTest()`, `course.go(t)`, `tutorial.go(i)`, `tutorial.list()`.
+
+Setting `app.baker.batcher.profile = true` records per-kernel GPU timestamps.
+
+## Credits and licence
 
 Engine code © 2026 Jure Triglav, MIT licence (`src/engine/LICENSE.md`).
-AVBD: Giles, Diaz, Yuksel — *Augmented Vertex Block Descent*, SIGGRAPH 2025.
+AVBD: Giles, Diaz, Yuksel, *Augmented Vertex Block Descent*, SIGGRAPH 2025.
